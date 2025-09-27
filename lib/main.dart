@@ -1,10 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
-import 'package:n8n_application_2/controllers/execution_controller.dart';
-import 'package:n8n_application_2/views/execution_panel.dart';
 import 'controllers/pipeline_controller.dart';
-import 'views/sidebar.dart';
-import 'views/canvas_area.dart';
+import 'controllers/execution_controller.dart';
+import 'views/modern_canvas.dart';
+import 'views/modern_sidebar.dart';
 
 void main() {
   Get.put(PipelineController());
@@ -13,9 +12,8 @@ void main() {
   runApp(const MyApp());
 }
 
-
 class MyApp extends StatelessWidget {
-  const MyApp();
+  const MyApp({Key? key}) : super(key: key);
 
   @override
   Widget build(BuildContext context) {
@@ -23,44 +21,106 @@ class MyApp extends StatelessWidget {
 
     return GetMaterialApp(
       title: 'Pipeline Designer',
-      home: Scaffold(
-        appBar: AppBar(
-
-          title: const Text('Pipeline Designer'),
-          actions: [
-  ElevatedButton.icon(
-    onPressed: execCtrl.runPipeline,
-    icon: const Icon(Icons.play_arrow),
-    label: const Text('Run Pipeline'),
-    style: ElevatedButton.styleFrom(backgroundColor: Colors.green),
-  ),
-  const SizedBox(width: 8),
-  ElevatedButton.icon(
-    onPressed: () {
-      Get.find<PipelineController>().clearAll();
-    },
-    icon: const Icon(Icons.delete_outline),
-    label: const Text('Clear All'),
-    style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
-  ),
-  const SizedBox(width: 20),
-],
-
+      theme: ThemeData(
+        primarySwatch: Colors.blue,
+        useMaterial3: true,
+        colorScheme: ColorScheme.fromSeed(
+          seedColor: const Color(0xFF6366F1),
+          brightness: Brightness.light,
         ),
-        body: Column(
-          children: const [
+      ),
+      home: Scaffold(
+        backgroundColor: const Color(0xFFF7F8FA),
+        appBar: AppBar(
+          elevation: 0,
+          backgroundColor: Colors.white,
+          surfaceTintColor: Colors.transparent,
+          title: Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  gradient: const LinearGradient(
+                    colors: [Color(0xFF6366F1), Color(0xFF8B5CF6)],
+                  ),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: const Icon(Icons.biotech, color: Colors.white, size: 20),
+              ),
+              const SizedBox(width: 12),
+              const Text(
+                'BioFlow',
+                style: TextStyle(
+                  fontWeight: FontWeight.w700,
+                  color: Color(0xFF0F172A),
+                  fontSize: 18,
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            Container(
+              margin: const EdgeInsets.only(right: 12),
+              decoration: BoxDecoration(
+                gradient: const LinearGradient(
+                  colors: [Color(0xFF10B981), Color(0xFF059669)],
+                ),
+                borderRadius: BorderRadius.circular(8),
+                boxShadow: [
+                  BoxShadow(
+                    color: const Color(0xFF10B981).withOpacity(0.25),
+                    blurRadius: 8,
+                    offset: const Offset(0, 3),
+                  ),
+                ],
+              ),
+              child: ElevatedButton.icon(
+                onPressed: execCtrl.runPipeline,
+                icon: const Icon(Icons.play_arrow, size: 18),
+                label: const Text('Execute'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.transparent,
+                  foregroundColor: Colors.white,
+                  shadowColor: Colors.transparent,
+                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                  textStyle: const TextStyle(fontWeight: FontWeight.w600),
+                ),
+              ),
+            ),
+            Container(
+              margin: const EdgeInsets.only(right: 20),
+              decoration: BoxDecoration(
+                color: const Color(0xFFF1F5F9),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: const Color(0xFFE2E8F0)),
+              ),
+              child: IconButton(
+                onPressed: () => Get.find<PipelineController>().clearAll(),
+                icon: const Icon(Icons.refresh, color: Color(0xFF64748B)),
+                tooltip: 'Reset Canvas',
+              ),
+            ),
+          ],
+        ),
+        body: const Row(
+          children: [
+            ModernSidebar(),
             Expanded(
-              child: Row(
+              child: Column(
                 children: [
-                  Sidebar(),
-                  Expanded(child: CanvasArea()),
+                  Expanded(child: ModernCanvas()),
+                  SizedBox(
+                height: 250,
+                width: double.infinity,
+                child: ExecutionPanel()),
                 ],
               ),
             ),
-            ExecutionPanel(),
+            
           ],
         ),
       ),
+      debugShowCheckedModeBanner: false,
     );
   }
 }

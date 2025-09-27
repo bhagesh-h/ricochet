@@ -1,0 +1,10 @@
+name: OpenRouter Agent
+version: 1.0.0
+schema: v1
+
+models:
+  - name: qwen-32b
+    provider: openai
+    model: qwen/qwen-2.5-coder-32b-instruct:free
+    apiBase: https://openrouter.ai/api/v1
+    apiKey: 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
