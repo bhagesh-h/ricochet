@@ -66,8 +66,15 @@ class PipelineController extends GetxController {
   }
 
   void addNode(String nodeType, Offset position) {
-    final node = _createNodeFromType(nodeType, position);
-    nodes.add(node);
+    // Check if this is a Docker image (starts with "docker:")
+    if (nodeType.startsWith('docker:')) {
+      final imageName = nodeType.substring(7); // Remove "docker:" prefix
+      final node = _createDockerNode(imageName, position);
+      nodes.add(node);
+    } else {
+      final node = _createNodeFromType(nodeType, position);
+      nodes.add(node);
+    }
   }
 
   PipelineNode _createNodeFromType(String type, Offset position) {
@@ -271,6 +278,60 @@ class PipelineController extends GetxController {
           ],
         );
     }
+  }
+
+  PipelineNode _createDockerNode(String imageName, Offset position) {
+    final id = const Uuid().v4();
+    
+    return PipelineNode(
+      id: id,
+      title: imageName,
+      description: 'Docker container execution',
+      position: position,
+      category: BlockCategory.processing,
+      iconCodePoint: '0xe1d4', // storage icon
+      parameters: [
+        BlockParameter(
+          key: 'image',
+          label: 'Docker Image',
+          type: ParameterType.text,
+          value: imageName,
+          placeholder: 'Docker image name',
+          required: true,
+        ),
+        BlockParameter(
+          key: 'tag',
+          label: 'Image Tag',
+          type: ParameterType.text,
+          value: 'latest',
+          placeholder: 'Image tag version',
+        ),
+        BlockParameter(
+          key: 'command',
+          label: 'Command',
+          type: ParameterType.text,
+          placeholder: 'Command to run inside container',
+        ),
+        BlockParameter(
+          key: 'volumes',
+          label: 'Volume Mounts',
+          type: ParameterType.text,
+          placeholder: '-v /host/path:/container/path',
+        ),
+        BlockParameter(
+          key: 'environment',
+          label: 'Environment Variables',
+          type: ParameterType.text,
+          placeholder: '-e VAR=value',
+        ),
+        BlockParameter(
+          key: 'ports',
+          label: 'Port Mapping',
+          type: ParameterType.text,
+          placeholder: '-p 8080:80',
+        ),
+      ],
+    );
   }
 
   void updateNodePosition(String id, Offset newPosition) {

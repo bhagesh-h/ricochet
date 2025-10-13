@@ -7,7 +7,6 @@ import 'views/modern_sidebar.dart';
 
 void main() {
   Get.put(PipelineController());
-  Get.put(TempConnection());
   Get.put(ExecutionController());
   runApp(const MyApp());
 }
@@ -106,17 +105,8 @@ class MyApp extends StatelessWidget {
           children: [
             ModernSidebar(),
             Expanded(
-              child: Column(
-                children: [
-                  Expanded(child: ModernCanvas()),
-                  SizedBox(
-                height: 250,
-                width: double.infinity,
-                child: ExecutionPanel()),
-                ],
-              ),
+              child: ModernCanvas(),
             ),
-            
           ],
         ),
       ),

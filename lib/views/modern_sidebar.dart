@@ -1,11 +1,22 @@
+
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:n8n_application_2/views/modern_canvas.dart';
-
 import '../controllers/execution_controller.dart';
+import '../controllers/docker_search_controller.dart';
+import '../models/docker_image.dart';
 
-class ModernSidebar extends StatelessWidget {
+class ModernSidebar extends StatefulWidget {
   const ModernSidebar({Key? key}) : super(key: key);
+
+  @override
+  State<ModernSidebar> createState() => _ModernSidebarState();
+}
+
+class _ModernSidebarState extends State<ModernSidebar> {
+  final DockerSearchController _searchController = Get.put(DockerSearchController());
+  final TextEditingController _searchTextController = TextEditingController();
+  final FocusNode _searchFocusNode = FocusNode();
 
   final List<Map<String, dynamic>> tools = const [
     {
@@ -41,6 +52,34 @@ class ModernSidebar extends StatelessWidget {
       'bgColor': Color(0xFFF0FDF4),
     },
   ];
+
+  @override
+  void initState() {
+    super.initState();
+    _searchTextController.addListener(_onSearchChanged);
+  }
+
+  @override
+  void dispose() {
+    _searchTextController.dispose();
+    _searchFocusNode.dispose();
+    super.dispose();
+  }
+
+  void _onSearchChanged() {
+    final query = _searchTextController.text.trim();
+    if (query.isNotEmpty) {
+      _searchController.searchDockerImages(query);
+    } else {
+      _searchController.clearSearch();
+    }
+  }
+
+  void _clearSearch() {
+    _searchTextController.clear();
+    _searchFocusNode.unfocus();
+    _searchController.clearSearch();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -98,19 +137,22 @@ class ModernSidebar extends StatelessWidget {
                       ),
                     ),
                     const SizedBox(width: 12),
-                    const Text(
-                      'Tools',
-                      style: TextStyle(
-                        fontSize: 20,
-                        fontWeight: FontWeight.w700,
-                        color: Color(0xFF0F172A),
+                    Expanded(
+                      child: const Text(
+                        'Tools & Docker Images',
+                        style: TextStyle(
+                          fontSize: 20,
+                          fontWeight: FontWeight.w700,
+                          color: Color(0xFF0F172A),
+                        ),
+                        overflow: TextOverflow.ellipsis,
                       ),
                     ),
                   ],
                 ),
                 const SizedBox(height: 8),
                 Text(
-                  'Drag and drop bioinformatics tools to build your pipeline',
+                  'Search Docker images or drag built-in tools to build your pipeline',
                   style: TextStyle(
                     fontSize: 14,
                     color: Colors.grey[600],
@@ -120,31 +162,197 @@ class ModernSidebar extends StatelessWidget {
               ],
             ),
           ),
-          // Tools list
-          Expanded(
-            child: ListView.builder(
-              padding: const EdgeInsets.all(16),
-              itemCount: tools.length,
-              itemBuilder: (context, index) {
-                final tool = tools[index];
-                return Container(
-                  margin: const EdgeInsets.only(bottom: 12),
-                  child: Draggable<String>(
-                    data: tool['name'],
-                    feedback: Material(
-                      elevation: 12,
-                      borderRadius: BorderRadius.circular(16),
-                      child: _buildToolCard(tool, isDragging: true),
+          // Search bar
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: const BoxDecoration(
+              border: Border(
+                bottom: BorderSide(color: Color(0xFFE2E8F0)),
+              ),
+            ),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Container(
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFF8FAFC),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: const Color(0xFFE2E8F0)),
                     ),
-                    childWhenDragging: _buildToolCard(tool, isGhost: true),
-                    child: _buildToolCard(tool),
+                    child: TextField(
+                      controller: _searchTextController,
+                      focusNode: _searchFocusNode,
+                      decoration: InputDecoration(
+                        hintText: 'Search Docker images...',
+                        hintStyle: const TextStyle(color: Color(0xFF94A3B8)),
+                        border: InputBorder.none,
+                        contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 16,
+                          vertical: 12,
+                        ),
+                        prefixIcon: const Icon(
+                          Icons.search,
+                          size: 20,
+                          color: Color(0xFF94A3B8),
+                        ),
+                        suffixIcon: _searchTextController.text.isNotEmpty
+                            ? IconButton(
+                                icon: const Icon(
+                                  Icons.clear,
+                                  size: 16,
+                                  color: Color(0xFF94A3B8),
+                                ),
+                                onPressed: _clearSearch,
+                              )
+                            : null,
+                      ),
+                      style: const TextStyle(
+                        fontSize: 14,
+                        color: Color(0xFF0F172A),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          // Content area
+          Expanded(
+            child: Obx(() {
+              if (_searchController.isLoading.value) {
+                return const Center(
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    valueColor: AlwaysStoppedAnimation(Color(0xFF6366F1)),
                   ),
                 );
-              },
-            ),
+              }
+
+              if (_searchController.errorMessage.value.isNotEmpty) {
+                return Center(
+                  child: Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        const Icon(
+                          Icons.wifi_off,
+                          size: 48,
+                          color: Color(0xFFEF4444),
+                        ),
+                        const SizedBox(height: 16),
+                        Text(
+                          _searchController.errorMessage.value,
+                          style: const TextStyle(
+                            color: Color(0xFFEF4444),
+                            fontSize: 14,
+                          ),
+                          textAlign: TextAlign.center,
+                        ),
+                        const SizedBox(height: 8),
+                        if (_searchController.errorMessage.value.contains('Network error'))
+                          const Text(
+                            'Please ensure the app has internet permissions\nand try restarting the app',
+                            style: TextStyle(
+                              color: Color(0xFF64748B),
+                              fontSize: 12,
+                            ),
+                            textAlign: TextAlign.center,
+                          ),
+                      ],
+                    ),
+                  ),
+                );
+              }
+
+              if (_searchController.searchQuery.value.isNotEmpty) {
+                return _buildDockerSearchResults();
+              }
+
+              return _buildBuiltInTools();
+            }),
           ),
         ],
       ),
+    );
+  }
+
+  Widget _buildBuiltInTools() {
+    return ListView.builder(
+      padding: const EdgeInsets.all(16),
+      itemCount: tools.length,
+      itemBuilder: (context, index) {
+        final tool = tools[index];
+        return Container(
+          margin: const EdgeInsets.only(bottom: 12),
+          child: Draggable<String>(
+            data: tool['name'],
+            feedback: Material(
+              elevation: 12,
+              borderRadius: BorderRadius.circular(16),
+              child: _buildToolCard(tool, isDragging: true),
+            ),
+            childWhenDragging: _buildToolCard(tool, isGhost: true),
+            child: _buildToolCard(tool),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildDockerSearchResults() {
+    final results = _searchController.searchResults;
+
+    if (results.isEmpty) {
+      return const Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              Icons.search_off,
+              size: 48,
+              color: Color(0xFFCBD5E1),
+            ),
+            SizedBox(height: 12),
+            Text(
+              'No Docker images found',
+              style: TextStyle(
+                color: Color(0xFF64748B),
+                fontSize: 14,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+            Text(
+              'Try a different search term',
+              style: TextStyle(
+                color: Color(0xFF94A3B8),
+                fontSize: 12,
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    return ListView.builder(
+      padding: const EdgeInsets.all(16),
+      itemCount: results.length,
+      itemBuilder: (context, index) {
+        final image = results[index];
+        return Container(
+          margin: const EdgeInsets.only(bottom: 12),
+          child: Draggable<String>(
+            data: 'docker:${image.displayName}',
+            feedback: Material(
+              elevation: 12,
+              borderRadius: BorderRadius.circular(16),
+              child: _buildDockerImageCard(image, isDragging: true),
+            ),
+            childWhenDragging: _buildDockerImageCard(image, isGhost: true),
+            child: _buildDockerImageCard(image),
+          ),
+        );
+      },
     );
   }
 
@@ -261,6 +469,167 @@ class ModernSidebar extends StatelessWidget {
       ),
     );
   }
+
+  Widget _buildDockerImageCard(DockerImage image, {bool isDragging = false, bool isGhost = false}) {
+    final color = image.isOfficial ? const Color(0xFF10B981) : const Color(0xFF6366F1);
+    final bgColor = image.isOfficial ? const Color(0xFFF0FDF4) : const Color(0xFFF0F9FF);
+
+    return Container(
+      width: isDragging ? 280 : double.infinity,
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: isGhost ? const Color(0xFFF1F5F9) : Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: isGhost ? const Color(0xFFE2E8F0) : color.withOpacity(0.2),
+          width: 1,
+        ),
+        boxShadow: isDragging
+            ? [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.15),
+                  blurRadius: 20,
+                  offset: const Offset(0, 8),
+                ),
+              ]
+            : [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.04),
+                  blurRadius: 8,
+                  offset: const Offset(0, 2),
+                ),
+              ],
+      ),
+      child: Row(
+        children: [
+          // Docker icon container
+          Container(
+            width: 48,
+            height: 48,
+            decoration: BoxDecoration(
+              color: isGhost ? const Color(0xFFE2E8F0) : bgColor,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(
+                color: isGhost ? const Color(0xFFCBD5E1) : color.withOpacity(0.2),
+              ),
+            ),
+            child: Icon(
+              Icons.storage,
+              color: isGhost ? const Color(0xFF94A3B8) : color,
+              size: 24,
+            ),
+          ),
+          const SizedBox(width: 16),
+          // Content
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        image.displayName,
+                        style: TextStyle(
+                          fontWeight: FontWeight.w700,
+                          fontSize: 16,
+                          color: isGhost ? const Color(0xFF94A3B8) : const Color(0xFF0F172A),
+                        ),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                    if (image.isOfficial) ...[
+                      const SizedBox(width: 8),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF10B981).withOpacity(0.1),
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                        child: const Text(
+                          'OFFICIAL',
+                          style: TextStyle(
+                            fontSize: 10,
+                            fontWeight: FontWeight.w700,
+                            color: Color(0xFF10B981),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  image.shortDescription,
+                  style: TextStyle(
+                    fontSize: 13,
+                    color: isGhost ? const Color(0xFFCBD5E1) : const Color(0xFF64748B),
+                    height: 1.3,
+                  ),
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                const SizedBox(height: 4),
+                Row(
+                  children: [
+                    Expanded(
+                      child: _buildStatItem(
+                        Icons.star,
+                        image.starCount.toString(),
+                        isGhost: isGhost,
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: _buildStatItem(
+                        Icons.download,
+                        image.formattedPullCount,
+                        isGhost: isGhost,
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+          // Drag indicator
+          if (!isGhost)
+            Container(
+              padding: const EdgeInsets.all(4),
+              decoration: BoxDecoration(
+                color: color.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(6),
+              ),
+              child: Icon(
+                Icons.drag_indicator,
+                color: color,
+                size: 16,
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildStatItem(IconData icon, String value, {bool isGhost = false}) {
+    return Row(
+      children: [
+        Icon(
+          icon,
+          size: 12,
+          color: isGhost ? const Color(0xFFCBD5E1) : const Color(0xFF64748B),
+        ),
+        const SizedBox(width: 4),
+        Text(
+          value,
+          style: TextStyle(
+            fontSize: 11,
+            color: isGhost ? const Color(0xFFCBD5E1) : const Color(0xFF64748B),
+          ),
+        ),
+      ],
+    );
+  }
 }
 
 // Legacy compatibility classes
@@ -281,150 +650,5 @@ class CanvasArea extends StatelessWidget {
     return const ModernCanvas();
   }
 }
-class ExecutionPanel extends StatelessWidget {
-  const ExecutionPanel({Key? key}) : super(key: key);
 
-  @override
-  Widget build(BuildContext context) {
-    final ExecutionController execCtrl = Get.find();
-
-    return Container(
-      height: 200,
-      decoration: const BoxDecoration(
-        color: Color(0xFF0F172A),
-        border: Border(
-          top: BorderSide(color: Color(0xFF1E293B)),
-        ),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // Header
-          Container(
-            padding: const EdgeInsets.all(16),
-            decoration: const BoxDecoration(
-              color: Color(0xFF1E293B),
-              border: Border(
-                bottom: BorderSide(color: Color(0xFF334155)),
-              ),
-            ),
-            child: SizedBox( // 👈 Wrap Row in SizedBox to provide bounded width
-              width: double.infinity,
-              child: Row(
-                children: [
-                  Container(
-                    padding: const EdgeInsets.all(6),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFF10B981).withOpacity(0.2),
-                      borderRadius: BorderRadius.circular(6),
-                    ),
-                    child: const Icon(
-                      Icons.terminal,
-                      color: Color(0xFF10B981),
-                      size: 16,
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  const Text(
-                    'Execution Log',
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontWeight: FontWeight.w600,
-                      fontSize: 14,
-                    ),
-                  ),
-                  const Spacer(),
-                  Obx(() {
-                    return execCtrl.isRunning.value
-                        ? const SizedBox(
-                            width: 14,
-                            height: 14,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2,
-                              valueColor: AlwaysStoppedAnimation(Color(0xFF10B981)),
-                            ),
-                          )
-                        : IconButton(
-                            onPressed: execCtrl.clearLog,
-                            icon: const Icon(
-                              Icons.clear_all,
-                              color: Color(0xFF64748B),
-                              size: 16,
-                            ),
-                            tooltip: 'Clear log',
-                          );
-                  }),
-                ],
-              ),
-            ),
-          ),
-          // Log content
-          Expanded(
-            child: Obx(() {
-              if (execCtrl.log.isEmpty) {
-                return const Center(
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Icon(
-                        Icons.play_circle_outline,
-                        size: 32,
-                        color: Color(0xFF475569),
-                      ),
-                      SizedBox(height: 8),
-                      Text(
-                        'No execution logs yet',
-                        style: TextStyle(
-                          color: Color(0xFF64748B),
-                          fontSize: 14,
-                        ),
-                      ),
-                      Text(
-                        'Click "Execute" to run the pipeline',
-                        style: TextStyle(
-                          color: Color(0xFF475569),
-                          fontSize: 12,
-                        ),
-                      ),
-                    ],
-                  ),
-                );
-              }
-
-              return ListView.builder(
-                padding: const EdgeInsets.all(12),
-                itemCount: execCtrl.log.length,
-                itemBuilder: (context, index) {
-                  final line = execCtrl.log[index];
-                  return Padding(
-                    padding: const EdgeInsets.only(bottom: 2),
-                    child: Text(
-                      line,
-                      style: const TextStyle(
-                        color: Color(0xFF10B981),
-                        fontSize: 12,
-                        fontFamily: 'monospace',
-                        height: 1.4,
-                      ),
-                    ),
-                  );
-                },
-              );
-            }),
-          ),
-        ],
-      ),
-    );
-  }
-}
-class TempConnection extends GetxController {
-  String? sourceId;
-
-  void setSource(String id) {
-    sourceId = id;
-  }
-
-  void clear() {
-    sourceId = null;
-  }
-}
+// ExecutionPanel class removed as it was incomplete
