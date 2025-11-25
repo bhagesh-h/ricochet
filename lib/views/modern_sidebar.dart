@@ -1,8 +1,6 @@
-
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
-import 'package:n8n_application_2/views/modern_canvas.dart';
-import '../controllers/execution_controller.dart';
+
 import '../controllers/docker_search_controller.dart';
 import '../models/docker_image.dart';
 
@@ -14,11 +12,28 @@ class ModernSidebar extends StatefulWidget {
 }
 
 class _ModernSidebarState extends State<ModernSidebar> {
-  final DockerSearchController _searchController = Get.put(DockerSearchController());
+  final DockerSearchController _searchController =
+      Get.find<DockerSearchController>();
   final TextEditingController _searchTextController = TextEditingController();
   final FocusNode _searchFocusNode = FocusNode();
 
   final List<Map<String, dynamic>> tools = const [
+    {
+      'name': 'Input',
+      'category': 'IO',
+      'description': 'Input data source',
+      'icon': Icons.input_rounded,
+      'color': Color(0xFF3B82F6),
+      'bgColor': Color(0xFFEFF6FF),
+    },
+    {
+      'name': 'Output',
+      'category': 'IO',
+      'description': 'Output data destination',
+      'icon': Icons.output_rounded,
+      'color': Color(0xFF3B82F6),
+      'bgColor': Color(0xFFEFF6FF),
+    },
     {
       'name': 'FastQC',
       'category': 'Quality Control',
@@ -139,9 +154,9 @@ class _ModernSidebarState extends State<ModernSidebar> {
                     const SizedBox(width: 12),
                     Expanded(
                       child: const Text(
-                        'Tools & Docker Images',
+                        'Search Docker Images',
                         style: TextStyle(
-                          fontSize: 20,
+                          fontSize: 17,
                           fontWeight: FontWeight.w700,
                           color: Color(0xFF0F172A),
                         ),
@@ -250,7 +265,8 @@ class _ModernSidebarState extends State<ModernSidebar> {
                           textAlign: TextAlign.center,
                         ),
                         const SizedBox(height: 8),
-                        if (_searchController.errorMessage.value.contains('Network error'))
+                        if (_searchController.errorMessage.value
+                            .contains('Network error'))
                           const Text(
                             'Please ensure the app has internet permissions\nand try restarting the app',
                             style: TextStyle(
@@ -356,17 +372,20 @@ class _ModernSidebarState extends State<ModernSidebar> {
     );
   }
 
-  Widget _buildToolCard(Map<String, dynamic> tool, {bool isDragging = false, bool isGhost = false}) {
+  Widget _buildToolCard(Map<String, dynamic> tool,
+      {bool isDragging = false, bool isGhost = false}) {
+    final primaryColor = tool['color'] as Color;
+    final backgroundColor = tool['bgColor'] as Color;
+
     return Container(
-      width: isDragging ? 280 : double.infinity,
-      padding: const EdgeInsets.all(20),
+      width: 180,
+      height: 60,
       decoration: BoxDecoration(
-        color: isGhost ? const Color(0xFFF1F5F9) : Colors.white,
-        borderRadius: BorderRadius.circular(16),
+        color: isGhost ? Colors.white.withOpacity(0.5) : Colors.white,
+        borderRadius: BorderRadius.circular(12),
         border: Border.all(
-          color: isGhost 
-              ? const Color(0xFFE2E8F0) 
-              : (tool['color'] as Color).withOpacity(0.2),
+          color:
+              isGhost ? const Color(0xFFE2E8F0) : primaryColor.withOpacity(0.2),
           width: 1,
         ),
         boxShadow: isDragging
@@ -387,82 +406,64 @@ class _ModernSidebarState extends State<ModernSidebar> {
       ),
       child: Row(
         children: [
-          // Icon container
           Container(
-            width: 48,
-            height: 48,
+            width: 36,
+            height: 36,
+            margin: const EdgeInsets.all(12),
             decoration: BoxDecoration(
-              color: isGhost 
-                  ? const Color(0xFFE2E8F0) 
-                  : (tool['bgColor'] as Color),
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(
-                color: isGhost 
-                    ? const Color(0xFFCBD5E1) 
-                    : (tool['color'] as Color).withOpacity(0.2),
-              ),
+              color: isGhost ? const Color(0xFFE2E8F0) : backgroundColor,
+              borderRadius: BorderRadius.circular(8),
             ),
             child: Icon(
-              tool['icon'],
-              color: isGhost 
-                  ? const Color(0xFF94A3B8) 
-                  : (tool['color'] as Color),
-              size: 24,
+              tool['icon'] as IconData,
+              color: isGhost ? const Color(0xFF94A3B8) : primaryColor,
+              size: 20,
             ),
           ),
-          const SizedBox(width: 16),
-          // Content
           Expanded(
             child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  tool['name'],
+                  tool['name'] as String,
                   style: TextStyle(
-                    fontWeight: FontWeight.w700,
-                    fontSize: 16,
-                    color: isGhost 
-                        ? const Color(0xFF94A3B8) 
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                    color: isGhost
+                        ? const Color(0xFF94A3B8)
                         : const Color(0xFF0F172A),
                   ),
+                  overflow: TextOverflow.ellipsis,
                 ),
-                const SizedBox(height: 4),
                 Text(
-                  tool['category'],
+                  tool['category'] as String,
                   style: TextStyle(
                     fontSize: 12,
-                    fontWeight: FontWeight.w500,
-                    color: isGhost 
-                        ? const Color(0xFFCBD5E1) 
-                        : (tool['color'] as Color),
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  tool['description'],
-                  style: TextStyle(
-                    fontSize: 13,
-                    color: isGhost 
-                        ? const Color(0xFFCBD5E1) 
+                    color: isGhost
+                        ? const Color(0xFFCBD5E1)
                         : const Color(0xFF64748B),
-                    height: 1.3,
                   ),
+                  overflow: TextOverflow.ellipsis,
                 ),
               ],
             ),
           ),
           // Drag indicator
           if (!isGhost)
-            Container(
-              padding: const EdgeInsets.all(4),
-              decoration: BoxDecoration(
-                color: (tool['color'] as Color).withOpacity(0.1),
-                borderRadius: BorderRadius.circular(6),
-              ),
-              child: Icon(
-                Icons.drag_indicator,
-                color: (tool['color'] as Color),
-                size: 16,
+            Padding(
+              padding: const EdgeInsets.all(8.0),
+              child: Container(
+                padding: const EdgeInsets.all(4),
+                decoration: BoxDecoration(
+                  color: (tool['color'] as Color).withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(6),
+                ),
+                child: Icon(
+                  Icons.drag_indicator,
+                  color: (tool['color'] as Color),
+                  size: 16,
+                ),
               ),
             ),
         ],
@@ -470,9 +471,12 @@ class _ModernSidebarState extends State<ModernSidebar> {
     );
   }
 
-  Widget _buildDockerImageCard(DockerImage image, {bool isDragging = false, bool isGhost = false}) {
-    final color = image.isOfficial ? const Color(0xFF10B981) : const Color(0xFF6366F1);
-    final bgColor = image.isOfficial ? const Color(0xFFF0FDF4) : const Color(0xFFF0F9FF);
+  Widget _buildDockerImageCard(DockerImage image,
+      {bool isDragging = false, bool isGhost = false}) {
+    final color =
+        image.isOfficial ? const Color(0xFF10B981) : const Color(0xFF6366F1);
+    final bgColor =
+        image.isOfficial ? const Color(0xFFF0FDF4) : const Color(0xFFF0F9FF);
 
     return Container(
       width: isDragging ? 280 : double.infinity,
@@ -510,7 +514,8 @@ class _ModernSidebarState extends State<ModernSidebar> {
               color: isGhost ? const Color(0xFFE2E8F0) : bgColor,
               borderRadius: BorderRadius.circular(12),
               border: Border.all(
-                color: isGhost ? const Color(0xFFCBD5E1) : color.withOpacity(0.2),
+                color:
+                    isGhost ? const Color(0xFFCBD5E1) : color.withOpacity(0.2),
               ),
             ),
             child: Icon(
@@ -533,7 +538,9 @@ class _ModernSidebarState extends State<ModernSidebar> {
                         style: TextStyle(
                           fontWeight: FontWeight.w700,
                           fontSize: 16,
-                          color: isGhost ? const Color(0xFF94A3B8) : const Color(0xFF0F172A),
+                          color: isGhost
+                              ? const Color(0xFF94A3B8)
+                              : const Color(0xFF0F172A),
                         ),
                         overflow: TextOverflow.ellipsis,
                       ),
@@ -541,7 +548,8 @@ class _ModernSidebarState extends State<ModernSidebar> {
                     if (image.isOfficial) ...[
                       const SizedBox(width: 8),
                       Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 6, vertical: 2),
                         decoration: BoxDecoration(
                           color: const Color(0xFF10B981).withOpacity(0.1),
                           borderRadius: BorderRadius.circular(4),
@@ -563,7 +571,9 @@ class _ModernSidebarState extends State<ModernSidebar> {
                   image.shortDescription,
                   style: TextStyle(
                     fontSize: 13,
-                    color: isGhost ? const Color(0xFFCBD5E1) : const Color(0xFF64748B),
+                    color: isGhost
+                        ? const Color(0xFFCBD5E1)
+                        : const Color(0xFF64748B),
                     height: 1.3,
                   ),
                   maxLines: 2,
@@ -647,8 +657,21 @@ class CanvasArea extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return const ModernCanvas();
+    // Return empty widget since ModernCanvas is imported in main.dart
+    return const SizedBox();
   }
 }
 
-// ExecutionPanel class removed as it was incomplete
+// ExecutionPanel moved to views/widgets/execution_panel.dart
+
+class TempConnection extends GetxController {
+  String? sourceId;
+
+  void setSource(String id) {
+    sourceId = id;
+  }
+
+  void clear() {
+    sourceId = null;
+  }
+}

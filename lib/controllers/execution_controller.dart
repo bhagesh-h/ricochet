@@ -5,12 +5,20 @@ import 'pipeline_controller.dart';
 class ExecutionController extends GetxController {
   final log = <String>[].obs;
   final isRunning = false.obs;
+  final showPanel = false.obs;
+  final panelHeight = 250.0.obs;
+
+  void setPanelHeight(double height) {
+    // Clamp height between min and max values
+    panelHeight.value = height.clamp(100.0, 600.0);
+  }
 
   void runPipeline() async {
     if (isRunning.value) return;
 
     log.clear();
     isRunning.value = true;
+    showPanel.value = true; // Show panel when running
     final pipelineCtrl = Get.find<PipelineController>();
 
     log.add('🚀 Pipeline execution started');
@@ -20,20 +28,21 @@ class ExecutionController extends GetxController {
 
     for (var node in pipelineCtrl.nodes) {
       pipelineCtrl.setNodeStatus(node.id, BlockStatus.running);
-      
+
       log.add('⚡ Executing: ${node.title}');
       log.add('   📂 Category: ${node.category.name}');
-      
+
       for (var param in node.parameters) {
         if (param.value != null) {
           log.add('   ⚙️ ${param.label}: ${param.value}');
         }
       }
 
-      await Future.delayed(Duration(milliseconds: 800 + (node.parameters.length * 300)));
+      await Future.delayed(
+          Duration(milliseconds: 800 + (node.parameters.length * 300)));
 
       final success = DateTime.now().millisecond % 10 != 0;
-      
+
       if (success) {
         pipelineCtrl.setNodeStatus(node.id, BlockStatus.success);
         log.add('   ✅ Completed successfully');
@@ -44,11 +53,12 @@ class ExecutionController extends GetxController {
         log.add('   🚨 Error: Processing timeout');
         break;
       }
-      
+
       log.add('');
     }
 
-    final allSuccess = pipelineCtrl.nodes.every((n) => n.status == BlockStatus.success);
+    final allSuccess =
+        pipelineCtrl.nodes.every((n) => n.status == BlockStatus.success);
     if (allSuccess) {
       log.add('🎉 Pipeline completed successfully!');
       log.add('📈 All blocks executed without errors');
@@ -61,5 +71,9 @@ class ExecutionController extends GetxController {
 
   void clearLog() {
     log.clear();
+  }
+
+  void togglePanel() {
+    showPanel.value = !showPanel.value;
   }
 }

@@ -11,16 +11,23 @@ class PipelineController extends GetxController {
   @override
   void onInit() {
     super.onInit();
-    _initializeDefaultBlocks();
+    // Canvas starts empty - users can drag blocks from sidebar
   }
 
   void _initializeDefaultBlocks() {
-    // Input block - only file selection parameters
+    // Clear existing nodes first
+    nodes.clear();
+
+    // Center of the 50000x50000 canvas
+    const double centerX = 25000;
+    const double centerY = 25000;
+
+    // Input block
     final inputBlock = PipelineNode(
       id: 'input-default',
       title: 'Input Data',
       description: 'Upload your data files',
-      position: const Offset(100, 150),
+      position: const Offset(centerX - 300, centerY),
       category: BlockCategory.input,
       iconCodePoint: '0xe2c7', // download icon
       parameters: [
@@ -35,12 +42,12 @@ class PipelineController extends GetxController {
       outputPorts: ['data'],
     );
 
-    // Output block - only file export parameters
+    // Output block
     final outputBlock = PipelineNode(
       id: 'output-default',
       title: 'Output Results',
       description: 'Export processed data',
-      position: const Offset(800, 150),
+      position: const Offset(centerX + 300, centerY),
       category: BlockCategory.output,
       iconCodePoint: '0xe2c6', // upload icon
       parameters: [
@@ -63,6 +70,8 @@ class PipelineController extends GetxController {
     );
 
     nodes.addAll([inputBlock, outputBlock]);
+    // Force update to ensure UI reflects changes
+    update();
   }
 
   void addNode(String nodeType, Offset position) {
@@ -79,8 +88,55 @@ class PipelineController extends GetxController {
 
   PipelineNode _createNodeFromType(String type, Offset position) {
     final id = const Uuid().v4();
-    
+
     switch (type) {
+      case 'Input':
+        return PipelineNode(
+          id: id,
+          title: 'Input Data',
+          description: 'Upload your data files',
+          position: position,
+          category: BlockCategory.input,
+          iconCodePoint: '0xe2c7',
+          parameters: [
+            BlockParameter(
+              key: 'file_path',
+              label: 'Select File',
+              type: ParameterType.file,
+              placeholder: 'Choose file from your computer',
+              required: true,
+            ),
+          ],
+          outputPorts: ['data'],
+        );
+
+      case 'Output':
+        return PipelineNode(
+          id: id,
+          title: 'Output Results',
+          description: 'Export processed data',
+          position: position,
+          category: BlockCategory.output,
+          iconCodePoint: '0xe2c6',
+          parameters: [
+            BlockParameter(
+              key: 'output_name',
+              label: 'Output Filename',
+              type: ParameterType.text,
+              value: 'results',
+              placeholder: 'Enter filename',
+            ),
+            BlockParameter(
+              key: 'format',
+              label: 'Export Format',
+              type: ParameterType.dropdown,
+              options: ['JSON', 'CSV', 'TXT', 'HTML', 'PDF'],
+              value: 'JSON',
+            ),
+          ],
+          inputPorts: ['result'],
+        );
+
       case 'FastQC':
         return PipelineNode(
           id: id,
@@ -220,7 +276,12 @@ class PipelineController extends GetxController {
               key: 'caller_type',
               label: 'Caller Type',
               type: ParameterType.dropdown,
-              options: ['GATK HaplotypeCaller', 'FreeBayes', 'SAMtools', 'VarScan'],
+              options: [
+                'GATK HaplotypeCaller',
+                'FreeBayes',
+                'SAMtools',
+                'VarScan'
+              ],
               value: 'GATK HaplotypeCaller',
             ),
             BlockParameter(
@@ -282,7 +343,7 @@ class PipelineController extends GetxController {
 
   PipelineNode _createDockerNode(String imageName, Offset position) {
     final id = const Uuid().v4();
-    
+
     return PipelineNode(
       id: id,
       title: imageName,
@@ -351,7 +412,8 @@ class PipelineController extends GetxController {
     nodes.refresh();
   }
 
-  void addConnection(String fromId, String toId, {String? fromPort, String? toPort}) {
+  void addConnection(String fromId, String toId,
+      {String? fromPort, String? toPort}) {
     if (fromId != toId && !_connectionExists(fromId, toId)) {
       final connection = Connection(
         id: const Uuid().v4(),
@@ -397,10 +459,10 @@ class PipelineController extends GetxController {
 
   void deleteNode(String id) {
     if (id == 'input-default' || id == 'output-default') return;
-    
+
     nodes.removeWhere((n) => n.id == id);
     connections.removeWhere((c) => c.fromNodeId == id || c.toNodeId == id);
-    
+
     if (selectedNode.value == id) {
       selectedNode.value = null;
     }

@@ -1,8 +1,7 @@
-import 'dart:math';
-import 'package:vector_math/vector_math_64.dart' hide Colors;
+import 'dart:math' as math;
 import 'package:flutter/material.dart';
-import 'package:flutter/gestures.dart';
 import 'package:get/get.dart';
+import 'package:n8n_application_2/models/pipeline_node.dart';
 import 'package:n8n_application_2/views/widgets/n8n_connection_painter.dart';
 import 'package:n8n_application_2/views/widgets/parameter_sidebar.dart';
 import '../controllers/pipeline_controller.dart';
@@ -15,19 +14,21 @@ class ModernCanvas extends StatefulWidget {
   State<ModernCanvas> createState() => _ModernCanvasState();
 }
 
-class _ModernCanvasState extends State<ModernCanvas> with TickerProviderStateMixin {
+class _ModernCanvasState extends State<ModernCanvas>
+    with TickerProviderStateMixin {
   final GlobalKey _canvasKey = GlobalKey();
-  final TransformationController _transformationController = TransformationController();
-  late AnimationController _zoomAnimationController;
-  
+  final TransformationController _transformationController =
+      TransformationController();
+  late AnimationController _fitAnimationController;
+  Animation<Matrix4>? _fitAnimation;
+
   double _currentZoom = 1.0;
-  static const double _minZoom = 0.3;
-  static const double _maxZoom = 3.0;
-  
-  // Base canvas dimensions
-  static const double _baseCanvasWidth = 8000;
-  static const double _baseCanvasHeight = 5000;
-  
+  static const double _minZoom = 0.1;
+  static const double _maxZoom = 5.0;
+
+  // Infinite canvas dimensions - effectively infinite for practical purposes
+  static const double _canvasSize = 50000;
+
   // For drag connection visualization
   Offset? _dragStartPoint;
   Offset? _dragCurrentPoint;
@@ -37,17 +38,31 @@ class _ModernCanvasState extends State<ModernCanvas> with TickerProviderStateMix
   @override
   void initState() {
     super.initState();
-    _zoomAnimationController = AnimationController(
-      duration: const Duration(milliseconds: 300),
+    _fitAnimationController = AnimationController(
+      duration: const Duration(milliseconds: 500),
       vsync: this,
     );
+    _fitAnimationController.addListener(_onFitAnimationTick);
+    _transformationController.addListener(_onTransformationChanged);
+
+    // Center the view initially
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _centerView();
+    });
   }
 
   @override
   void dispose() {
+    _fitAnimationController.dispose();
+    _transformationController.removeListener(_onTransformationChanged);
     _transformationController.dispose();
-    _zoomAnimationController.dispose();
     super.dispose();
+  }
+
+  void _onTransformationChanged() {
+    setState(() {
+      _currentZoom = _transformationController.value.getMaxScaleOnAxis();
+    });
   }
 
   @override
@@ -55,114 +70,103 @@ class _ModernCanvasState extends State<ModernCanvas> with TickerProviderStateMix
     final PipelineController controller = Get.find();
 
     return Container(
-      decoration: const BoxDecoration(
-        color: Color.fromARGB(255, 0, 0, 0),
-      ),
+      color: const Color(0xFFF7F8FA),
       child: Stack(
         children: [
-          // Main canvas with zoom
-          Listener(
-            onPointerSignal: (pointerSignal) {
-              if (pointerSignal is PointerScrollEvent) {
-                _handleZoom(pointerSignal);
-              }
-            },
-            child: InteractiveViewer(
-              transformationController: _transformationController,
-              minScale: 0.1, // Let InteractiveViewer handle all scaling
-              maxScale: 5.0,
-              boundaryMargin: const EdgeInsets.all(100),
-              constrained: false,
-              child: DragTarget<String>(
-                onWillAccept: (data) => true,
-                onAcceptWithDetails: (details) {
-                  // Get the InteractiveViewer's render box for coordinate conversion
-                  final RenderBox? viewerRenderBox = context.findRenderObject() as RenderBox?;
-                  if (viewerRenderBox != null) {
-                    // Convert global position to local InteractiveViewer coordinates
-                    final localOffset = viewerRenderBox.globalToLocal(details.offset);
-                    
-                    // Get current transformation matrix
-                    final matrix = _transformationController.value;
-                    final scale = matrix.getMaxScaleOnAxis();
-                    final translation = matrix.getTranslation();
-                    
-                    // Convert screen coordinates to canvas logical coordinates
-                    // Remove the pan offset and scale to get logical canvas position
-                    final canvasX = (localOffset.dx - translation.x) / scale;
-                    final canvasY = (localOffset.dy - translation.y) / scale;
-                    
-                    final dropPosition = Offset(canvasX, canvasY);
-                    controller.addNode(details.data, dropPosition);
-                  }
-                },
-                builder: (context, candidateData, rejectedData) {
-                  return Obx(() {
-                    return Container(
-                      key: _canvasKey,
-                      width: _baseCanvasWidth,
-                      height: _baseCanvasHeight,
-                      child: Stack(
-                        children: [
-                          // Grid background
-                          CustomPaint(
-                            size: Size(_baseCanvasWidth, _baseCanvasHeight),
-                            painter: N8NGridPainter(zoom: _currentZoom),
-                          ),
-                          // Connection lines
-                          CustomPaint(
-                            size: Size(_baseCanvasWidth, _baseCanvasHeight),
-                            painter: N8NConnectionPainter(
-                              nodes: controller.nodes,
-                              connections: controller.connections,
-                            ),
-                          ),
-                          // Temporary drag connection line
-                          if (_dragStartPoint != null && _dragCurrentPoint != null)
-                            CustomPaint(
-                              size: Size(_baseCanvasWidth, _baseCanvasHeight),
-                              painter: _DragConnectionPainter(
-                                startPoint: _dragStartPoint!,
-                                endPoint: _dragCurrentPoint!,
-                                color: _getDragConnectionColor(),
-                              ),
-                            ),
-                          // Nodes
-                          ...controller.nodes.map((node) {
-                            return Positioned(
-                              left: node.position.dx,
-                              top: node.position.dy,
-                              child: N8NBlockWidget(
-                                node: node,
-                                canvasKey: _canvasKey,
-                                zoom: _currentZoom,
-                                onConnectionDragStart: startConnectionDrag,
-                                onConnectionDragUpdate: updateConnectionDrag,
-                                onConnectionDragEnd: endConnectionDrag,
-                              ),
-                            );
-                          }),
-                        ],
-                      ),
-                    );
-                  });
-                },
+          // Optimized Grid Background - Draws only what's visible
+          Positioned.fill(
+            child: RepaintBoundary(
+              child: CustomPaint(
+                painter: N8NGridPainter(
+                  transformationController: _transformationController,
+                ),
               ),
             ),
           ),
+
+          // Main canvas area
+          DragTarget<String>(
+            onAcceptWithDetails: (details) {
+              _handleDropFromSidebar(details);
+            },
+            builder: (context, candidateData, rejectedData) {
+              return InteractiveViewer(
+                transformationController: _transformationController,
+                minScale: _minZoom,
+                maxScale: _maxZoom,
+                boundaryMargin: const EdgeInsets.all(double.infinity),
+                constrained: false,
+                panEnabled: true,
+                scaleEnabled: true,
+                child: SizedBox(
+                  width: _canvasSize,
+                  height: _canvasSize,
+                  child: Stack(
+                    key: _canvasKey,
+                    children: [
+                      // Connection lines
+                      Positioned.fill(
+                        child: _buildConnections(controller),
+                      ),
+
+                      // Temporary drag connection line
+                      if (_dragStartPoint != null && _dragCurrentPoint != null)
+                        Positioned.fill(
+                          child: CustomPaint(
+                            painter: _DragConnectionPainter(
+                              startPoint: _dragStartPoint!,
+                              endPoint: _dragCurrentPoint!,
+                              color: _getDragConnectionColor(),
+                            ),
+                          ),
+                        ),
+
+                      // Nodes
+                      _buildNodes(controller),
+                    ],
+                  ),
+                ),
+              );
+            },
+          ),
+
+          // Floating Fit View button
+          Positioned(
+            right: 20,
+            bottom: 280,
+            child: _buildFitViewButton(),
+          ),
+
+          // Reset Zoom button
+          Positioned(
+            right: 20,
+            bottom: 220,
+            child: _buildResetZoomButton(),
+          ),
+
           // Zoom controls
           Positioned(
             right: 20,
             bottom: 80,
             child: _buildZoomControls(),
           ),
+
           // Parameter sidebar
           Obx(() {
             final selectedNode = controller.selectedNode.value;
             if (selectedNode != null) {
-              final node = controller.nodes.firstWhereOrNull((n) => n.id == selectedNode);
+              final node = controller.nodes
+                  .firstWhereOrNull((n) => n.id == selectedNode);
               if (node != null) {
-                return ParameterSidebar(node: node);
+                return Positioned(
+                  right: 0,
+                  top: 0,
+                  bottom: 0,
+                  child: ParameterSidebar(
+                    key: ValueKey(node.id),
+                    node: node,
+                  ),
+                );
               }
             }
             return const SizedBox();
@@ -172,73 +176,158 @@ class _ModernCanvasState extends State<ModernCanvas> with TickerProviderStateMix
     );
   }
 
-  void _handleZoom(PointerScrollEvent event) {
-    final RenderBox? renderBox = context.findRenderObject() as RenderBox?;
-    if (renderBox == null) return;
-    
-    final Offset localPosition = renderBox.globalToLocal(event.position);
-    final double zoomDelta = event.scrollDelta.dy > 0 ? -0.1 : 0.1;
-    final double newZoom = (_currentZoom + zoomDelta).clamp(_minZoom, _maxZoom);
-    
-    if (newZoom != _currentZoom) {
-      // Calculate zoom center point
-      final Matrix4 matrix = _transformationController.value;
-      final Vector3 translation = matrix.getTranslation();
-      final double currentScale = matrix.getMaxScaleOnAxis();
-      
-      // Calculate the point we're zooming towards in canvas coordinates
-      final double canvasX = (localPosition.dx - translation.x) / currentScale;
-      final double canvasY = (localPosition.dy - translation.y) / currentScale;
-      
-      setState(() {
-        _currentZoom = newZoom;
-      });
-      
-      // Adjust pan to keep zoom center point stable
-      final double newTranslationX = localPosition.dx - (canvasX * currentScale);
-      final double newTranslationY = localPosition.dy - (canvasY * currentScale);
-      
-      final Matrix4 newMatrix = Matrix4.identity()
-        ..translate(newTranslationX, newTranslationY)
-        ..scale(currentScale);
-      
-      _transformationController.value = newMatrix;
+  Widget _buildConnections(PipelineController controller) {
+    return Obx(() {
+      return CustomPaint(
+        painter: N8NConnectionPainter(
+          nodes: controller.nodes.toList(),
+          connections: controller.connections.toList(),
+        ),
+      );
+    });
+  }
+
+  Widget _buildNodes(PipelineController controller) {
+    return Obx(() {
+      return Stack(
+        children: controller.nodes.map((node) {
+          return _buildNodeWidget(node);
+        }).toList(),
+      );
+    });
+  }
+
+  Widget _buildNodeWidget(PipelineNode node) {
+    return Positioned(
+      left: node.position.dx,
+      top: node.position.dy,
+      child: _DraggableNode(
+        key: ValueKey(node
+            .id), // CRITICAL: Key ensures state preservation during rebuilds
+        node: node,
+        canvasKey: _canvasKey,
+        transformationController: _transformationController,
+        onConnectionDragStart: startConnectionDrag,
+        onConnectionDragUpdate: updateConnectionDrag,
+        onConnectionDragEnd: endConnectionDrag,
+      ),
+    );
+  }
+
+  Widget _buildFitViewButton() {
+    return FloatingActionButton(
+      onPressed: _fitToNodes,
+      mini: true,
+      backgroundColor: Colors.white,
+      foregroundColor: Colors.blue,
+      child: const Icon(Icons.fit_screen),
+      tooltip: 'Fit Workflow',
+    );
+  }
+
+  Widget _buildResetZoomButton() {
+    return FloatingActionButton(
+      onPressed: _centerView,
+      mini: true,
+      backgroundColor: Colors.white,
+      foregroundColor: Colors.green,
+      child: const Icon(Icons.refresh),
+      tooltip: 'Reset View',
+    );
+  }
+
+  void _centerView() {
+    final size = MediaQuery.of(context).size;
+    // Center the view on the virtual center (25000, 25000)
+    // We want (25000, 25000) to be at (size.width/2, size.height/2)
+    const double centerX = _canvasSize / 2;
+    const double centerY = _canvasSize / 2;
+
+    final matrix = Matrix4.identity()
+      ..translate(
+        -centerX + size.width / 2,
+        -centerY + size.height / 2,
+      )
+      ..scale(1.0);
+
+    _animateToMatrix(matrix);
+  }
+
+  void _animateToMatrix(Matrix4 targetMatrix) {
+    _fitAnimation = Matrix4Tween(
+      begin: _transformationController.value,
+      end: targetMatrix,
+    ).animate(CurvedAnimation(
+      parent: _fitAnimationController,
+      curve: Curves.easeInOut,
+    ));
+    _fitAnimationController.forward(from: 0);
+  }
+
+  void _fitToNodes() {
+    final controller = Get.find<PipelineController>();
+    if (controller.nodes.isEmpty) {
+      _centerView();
+      return;
+    }
+
+    final size = MediaQuery.of(context).size;
+    Rect nodeBounds = _calculateNodesBoundingBox(controller.nodes);
+
+    // Add some padding
+    nodeBounds = nodeBounds.inflate(100);
+
+    final scaleX = size.width / nodeBounds.width;
+    final scaleY = size.height / nodeBounds.height;
+    final scale = math.min(scaleX, scaleY).clamp(_minZoom, _maxZoom);
+
+    final matrix = Matrix4.identity()
+      ..translate(
+        size.width / 2 - nodeBounds.center.dx * scale,
+        size.height / 2 - nodeBounds.center.dy * scale,
+      )
+      ..scale(scale);
+
+    _animateToMatrix(matrix);
+  }
+
+  Rect _calculateNodesBoundingBox(List<PipelineNode> nodes) {
+    if (nodes.isEmpty) return Rect.zero;
+
+    double minX = double.infinity;
+    double minY = double.infinity;
+    double maxX = double.negativeInfinity;
+    double maxY = double.negativeInfinity;
+
+    for (final node in nodes) {
+      minX = math.min(minX, node.position.dx);
+      minY = math.min(minY, node.position.dy);
+      // Assume node size is roughly 180x60
+      maxX = math.max(maxX, node.position.dx + 180);
+      maxY = math.max(maxY, node.position.dy + 60);
+    }
+
+    return Rect.fromLTRB(minX, minY, maxX, maxY);
+  }
+
+  void _onFitAnimationTick() {
+    if (_fitAnimation != null) {
+      _transformationController.value = _fitAnimation!.value;
     }
   }
 
   void startConnectionDrag(String nodeId, bool isOutput, Offset startPoint) {
-    // Convert the startPoint to account for current zoom and pan
-    final matrix = _transformationController.value;
-    final translation = matrix.getTranslation();
-    final scale = matrix.getMaxScaleOnAxis();
-    
-    // Transform the point to canvas coordinates
-    final transformedPoint = Offset(
-      startPoint.dx * _currentZoom * scale + translation.x,
-      startPoint.dy * _currentZoom * scale + translation.y,
-    );
-    
     setState(() {
       _dragSourceNodeId = nodeId;
       _isOutputDrag = isOutput;
-      _dragStartPoint = transformedPoint;
-      _dragCurrentPoint = transformedPoint;
+      _dragStartPoint = startPoint;
+      _dragCurrentPoint = startPoint;
     });
   }
 
   void updateConnectionDrag(Offset currentPoint) {
-    // Convert the current point to account for current zoom and pan
-    final matrix = _transformationController.value;
-    final translation = matrix.getTranslation();
-    final scale = matrix.getMaxScaleOnAxis();
-    
-    final transformedPoint = Offset(
-      currentPoint.dx * _currentZoom * scale + translation.x,
-      currentPoint.dy * _currentZoom * scale + translation.y,
-    );
-    
     setState(() {
-      _dragCurrentPoint = transformedPoint;
+      _dragCurrentPoint = currentPoint;
     });
   }
 
@@ -253,7 +342,8 @@ class _ModernCanvasState extends State<ModernCanvas> with TickerProviderStateMix
   Color _getDragConnectionColor() {
     if (_dragSourceNodeId != null) {
       final controller = Get.find<PipelineController>();
-      final node = controller.nodes.firstWhereOrNull((n) => n.id == _dragSourceNodeId);
+      final node =
+          controller.nodes.firstWhereOrNull((n) => n.id == _dragSourceNodeId);
       if (node != null) {
         return node.primaryColor;
       }
@@ -285,14 +375,19 @@ class _ModernCanvasState extends State<ModernCanvas> with TickerProviderStateMix
             color: const Color(0xFFE2E8F0),
           ),
           Container(
+            width: 48,
             padding: const EdgeInsets.symmetric(vertical: 8),
-            child: Text(
-              '${(_currentZoom * 100).round()}%',
-              style: const TextStyle(
-                fontSize: 12,
-                fontWeight: FontWeight.w600,
-                color: Color(0xFF475569),
-              ),
+            child: Column(
+              children: [
+                Text(
+                  '${(_currentZoom * 100).round()}%',
+                  style: const TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                    color: Color(0xFF475569),
+                  ),
+                ),
+              ],
             ),
           ),
           Container(
@@ -319,35 +414,146 @@ class _ModernCanvasState extends State<ModernCanvas> with TickerProviderStateMix
   }
 
   void _zoomIn() {
-    final double newZoom = (_currentZoom + 0.2).clamp(_minZoom, _maxZoom);
+    final newZoom = (_currentZoom + 0.2).clamp(_minZoom, _maxZoom);
     _animateZoom(newZoom);
   }
 
   void _zoomOut() {
-    final double newZoom = (_currentZoom - 0.2).clamp(_minZoom, _maxZoom);
+    final newZoom = (_currentZoom - 0.2).clamp(_minZoom, _maxZoom);
     _animateZoom(newZoom);
   }
 
   void _animateZoom(double targetZoom) {
-    final double startZoom = _currentZoom;
-    final Animation<double> animation = Tween<double>(
-      begin: startZoom,
-      end: targetZoom,
-    ).animate(CurvedAnimation(
-      parent: _zoomAnimationController,
-      curve: Curves.easeInOut,
-    ));
+    // Zoom towards the center of the viewport
+    final size = MediaQuery.of(context).size;
+    final center = Offset(size.width / 2, size.height / 2);
 
-    animation.addListener(() {
-      setState(() {
-        _currentZoom = animation.value;
-      });
-      // Maintain current InteractiveViewer transformation during zoom animation
-      // Don't reset the transformation matrix during button zoom
-    });
+    // Current matrix
+    final matrix = _transformationController.value;
 
-    _zoomAnimationController.reset();
-    _zoomAnimationController.forward();
+    // Calculate translation to keep center fixed
+    final translation = matrix.getTranslation();
+    final currentTranslation = Offset(translation.x, translation.y);
+    final currentScale = matrix.getMaxScaleOnAxis();
+    final scaleChange = targetZoom / currentScale;
+
+    final offset = center - (center - currentTranslation) * scaleChange;
+
+    final newMatrix = Matrix4.identity()
+      ..translate(offset.dx, offset.dy)
+      ..scale(targetZoom);
+
+    _animateToMatrix(newMatrix);
+  }
+
+  void _handleDropFromSidebar(DragTargetDetails<String> details) {
+    final controller = Get.find<PipelineController>();
+
+    // Convert screen coordinates to canvas coordinates
+    final canvasPosition = _screenToCanvasCoordinates(details.offset);
+
+    // Add node at the calculated position
+    // Adjust for node center (assuming 180x60 node size)
+    final nodePosition = canvasPosition - const Offset(90, 30);
+
+    controller.addNode(details.data, nodePosition);
+  }
+
+  Offset _screenToCanvasCoordinates(Offset screenPosition) {
+    final RenderBox? renderBox =
+        _canvasKey.currentContext?.findRenderObject() as RenderBox?;
+    if (renderBox == null) return Offset.zero;
+
+    // 1. Convert global screen position to the InteractiveViewer's local coordinate system
+    // The renderBox here is the Stack inside the InteractiveViewer.
+    // globalToLocal automatically accounts for the InteractiveViewer's transformation
+    // because the RenderBox is transformed by it.
+    final localOffset = renderBox.globalToLocal(screenPosition);
+    return localOffset;
+  }
+}
+
+// Draggable Node Wrapper
+class _DraggableNode extends StatefulWidget {
+  final PipelineNode node;
+  final GlobalKey canvasKey;
+  final TransformationController transformationController;
+  final Function(String, bool, Offset)? onConnectionDragStart;
+  final Function(Offset)? onConnectionDragUpdate;
+  final Function()? onConnectionDragEnd;
+
+  const _DraggableNode({
+    Key? key,
+    required this.node,
+    required this.canvasKey,
+    required this.transformationController,
+    this.onConnectionDragStart,
+    this.onConnectionDragUpdate,
+    this.onConnectionDragEnd,
+  }) : super(key: key);
+
+  @override
+  State<_DraggableNode> createState() => _DraggableNodeState();
+}
+
+class _DraggableNodeState extends State<_DraggableNode> {
+  bool _isDragging = false;
+
+  @override
+  Widget build(BuildContext context) {
+    // We use a custom GestureDetector for dragging to handle zoom correctly
+    return GestureDetector(
+      onPanStart: (details) {
+        setState(() {
+          _isDragging = true;
+        });
+      },
+      onPanUpdate: (details) {
+        // Apply zoom factor to drag delta
+        final zoom = widget.transformationController.value.getMaxScaleOnAxis();
+        final delta = details.delta / zoom;
+
+        final controller = Get.find<PipelineController>();
+        final newPos = widget.node.position + delta;
+        controller.updateNodePosition(widget.node.id, newPos);
+      },
+      onPanEnd: (details) {
+        setState(() {
+          _isDragging = false;
+        });
+      },
+      child: MouseRegion(
+        cursor: SystemMouseCursors.move,
+        child: Container(
+          width: 180,
+          height: 60,
+          decoration: BoxDecoration(
+            color: _isDragging ? Colors.white.withOpacity(0.9) : Colors.white,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(
+              color:
+                  widget.node.primaryColor.withOpacity(_isDragging ? 0.7 : 0.3),
+              width: _isDragging ? 2 : 1,
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(_isDragging ? 0.15 : 0.08),
+                blurRadius: _isDragging ? 12 : 8,
+                offset: Offset(0, _isDragging ? 6 : 2),
+              ),
+            ],
+          ),
+          child: N8NBlockWidget(
+            node: widget.node,
+            canvasKey: widget.canvasKey,
+            zoom: 1.0, // Zoom is handled by InteractiveViewer
+            onConnectionDragStart: widget.onConnectionDragStart,
+            onConnectionDragUpdate: widget.onConnectionDragUpdate,
+            onConnectionDragEnd: widget.onConnectionDragEnd,
+          ),
+        ),
+      ),
+    );
   }
 }
 
@@ -370,231 +576,60 @@ class _DragConnectionPainter extends CustomPainter {
       ..style = PaintingStyle.stroke
       ..strokeCap = StrokeCap.round;
 
-    // Draw straight line for drag connection
     canvas.drawLine(startPoint, endPoint, paint);
-
-    // Draw arrowhead
-    final angle = (endPoint - startPoint).direction;
-    const arrowLength = 12.0;
-
-    final point1 = Offset(
-      endPoint.dx - arrowLength * cos(angle - pi / 6),
-      endPoint.dy - arrowLength * sin(angle - pi / 6),
-    );
-    final point2 = Offset(
-      endPoint.dx - arrowLength * cos(angle + pi / 6),
-      endPoint.dy - arrowLength * sin(angle + pi / 6),
-    );
-
-    final arrowPath = Path();
-    arrowPath.moveTo(endPoint.dx, endPoint.dy);
-    arrowPath.lineTo(point1.dx, point1.dy);
-    arrowPath.lineTo(point2.dx, point2.dy);
-    arrowPath.close();
-
-    final arrowPaint = Paint()
-      ..color = color.withOpacity(0.9)
-      ..style = PaintingStyle.fill;
-
-    canvas.drawPath(arrowPath, arrowPaint);
   }
 
   @override
   bool shouldRepaint(_DragConnectionPainter oldDelegate) {
     return oldDelegate.startPoint != startPoint ||
-           oldDelegate.endPoint != endPoint ||
-           oldDelegate.color != color;
+        oldDelegate.endPoint != endPoint ||
+        oldDelegate.color != color;
   }
 }
 
 class N8NGridPainter extends CustomPainter {
-  final double zoom;
+  final TransformationController transformationController;
 
-  N8NGridPainter({required this.zoom});
+  N8NGridPainter({required this.transformationController})
+      : super(repaint: transformationController);
 
   @override
   void paint(Canvas canvas, Size size) {
+    final matrix = transformationController.value;
+    final scale = matrix.getMaxScaleOnAxis();
+    final translation = matrix.getTranslation();
+
     final paint = Paint()
-      ..color = const Color(0xFFE2E8F0).withOpacity(0.4)
-      ..strokeWidth = 0.5 / zoom; // Adjust stroke width for zoom
+      ..color = const Color(0xFFE2E8F0).withOpacity(0.5)
+      ..strokeWidth = 1.0;
 
     const spacing = 20.0;
-    
-    // Grid maintains consistent logical spacing
-    // Transform.scale handles visual scaling
-    for (double x = 0; x < size.width; x += spacing) {
+
+    // Calculate visible grid area
+    // We need to draw grid lines that cover the viewport
+    // The viewport size is 'size'
+    // The grid moves with translation and scales with scale
+
+    // Effective spacing on screen
+    final effectiveSpacing = spacing * scale;
+
+    // Offset of the grid origin on screen
+    // This calculates where the first grid line should appear relative to the viewport's top-left corner
+    // to align with the transformed grid.
+    final offsetX = translation.x % effectiveSpacing;
+    final offsetY = translation.y % effectiveSpacing;
+
+    // Draw vertical lines
+    for (double x = offsetX; x < size.width; x += effectiveSpacing) {
       canvas.drawLine(Offset(x, 0), Offset(x, size.height), paint);
     }
 
-    for (double y = 0; y < size.height; y += spacing) {
+    // Draw horizontal lines
+    for (double y = offsetY; y < size.height; y += effectiveSpacing) {
       canvas.drawLine(Offset(0, y), Offset(size.width, y), paint);
     }
   }
 
   @override
-  bool shouldRepaint(N8NGridPainter oldDelegate) => oldDelegate.zoom != zoom;
-}
-
-// Additional helper class for better zoom handling in InteractiveViewer
-class ZoomAwareInteractiveViewer extends StatefulWidget {
-  final Widget child;
-  final double minScale;
-  final double maxScale;
-  final TransformationController? transformationController;
-  final Function(double)? onZoomChanged;
-
-  const ZoomAwareInteractiveViewer({
-    Key? key,
-    required this.child,
-    this.minScale = 0.1,
-    this.maxScale = 10.0,
-    this.transformationController,
-    this.onZoomChanged,
-  }) : super(key: key);
-
-  @override
-  State<ZoomAwareInteractiveViewer> createState() => _ZoomAwareInteractiveViewerState();
-}
-
-class _ZoomAwareInteractiveViewerState extends State<ZoomAwareInteractiveViewer> {
-  late TransformationController _controller;
-  double _lastScale = 1.0;
-
-  @override
-  void initState() {
-    super.initState();
-    _controller = widget.transformationController ?? TransformationController();
-    _controller.addListener(_onTransformationChanged);
-  }
-
-  @override
-  void dispose() {
-    if (widget.transformationController == null) {
-      _controller.dispose();
-    } else {
-      _controller.removeListener(_onTransformationChanged);
-    }
-    super.dispose();
-  }
-
-  void _onTransformationChanged() {
-    final currentScale = _controller.value.getMaxScaleOnAxis();
-    if (currentScale != _lastScale) {
-      _lastScale = currentScale;
-      widget.onZoomChanged?.call(currentScale);
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return InteractiveViewer(
-      transformationController: _controller,
-      minScale: widget.minScale,
-      maxScale: widget.maxScale,
-      boundaryMargin: const EdgeInsets.all(100),
-      constrained: false,
-      child: widget.child,
-    );
-  }
-}
-
-// Optional: Enhanced N8NBlockWidget that adapts to zoom levels
-class ZoomAdaptiveN8NBlockWidget extends StatelessWidget {
-  final dynamic node;
-  final GlobalKey canvasKey;
-  final double zoom;
-  final Function(String, bool, Offset)? onConnectionDragStart;
-  final Function(Offset)? onConnectionDragUpdate;
-  final Function()? onConnectionDragEnd;
-
-  const ZoomAdaptiveN8NBlockWidget({
-    Key? key,
-    required this.node,
-    required this.canvasKey,
-    required this.zoom,
-    this.onConnectionDragStart,
-    this.onConnectionDragUpdate,
-    this.onConnectionDragEnd,
-  }) : super(key: key);
-
-  @override
-  Widget build(BuildContext context) {
-    // Adapt sizes based on zoom level
-    final double adaptedFontSize = (14 / zoom).clamp(10, 18);
-    final double adaptedPadding = (12 / zoom).clamp(8, 16);
-    final double adaptedBorderRadius = (8 / zoom).clamp(4, 12);
-    final double adaptedIconSize = (20 / zoom).clamp(14, 24);
-
-    return Container(
-      constraints: BoxConstraints(
-        minWidth: 200 / zoom,
-        maxWidth: 300 / zoom,
-      ),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(adaptedBorderRadius),
-        border: Border.all(
-          color: node.isSelected ? Colors.blue : Colors.grey.shade300,
-          width: (node.isSelected ? 2 : 1) / zoom,
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.1),
-            blurRadius: 4 / zoom,
-            offset: Offset(0, 2 / zoom),
-          ),
-        ],
-      ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          // Header with adapted styling
-          Container(
-            padding: EdgeInsets.all(adaptedPadding),
-            decoration: BoxDecoration(
-              color: node.primaryColor?.withOpacity(0.1) ?? Colors.grey.shade100,
-              borderRadius: BorderRadius.only(
-                topLeft: Radius.circular(adaptedBorderRadius),
-                topRight: Radius.circular(adaptedBorderRadius),
-              ),
-            ),
-            child: Row(
-              children: [
-                Icon(
-                  node.icon ?? Icons.widgets,
-                  size: adaptedIconSize,
-                  color: node.primaryColor ?? Colors.grey,
-                ),
-                SizedBox(width: 8 / zoom),
-                Expanded(
-                  child: Text(
-                    node.title ?? 'Node',
-                    style: TextStyle(
-                      fontSize: adaptedFontSize,
-                      fontWeight: FontWeight.w600,
-                      color: Colors.black87,
-                    ),
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          // Content area with adapted padding
-          Container(
-            padding: EdgeInsets.all(adaptedPadding),
-            child: Text(
-              node.description ?? '',
-              style: TextStyle(
-                fontSize: adaptedFontSize - 2,
-                color: Colors.grey.shade600,
-              ),
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
+  bool shouldRepaint(N8NGridPainter oldDelegate) => true;
 }

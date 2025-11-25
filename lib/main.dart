@@ -1,13 +1,19 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
+import 'package:n8n_application_2/controllers/docker_search_controller.dart';
 import 'controllers/pipeline_controller.dart';
 import 'controllers/execution_controller.dart';
 import 'views/modern_canvas.dart';
 import 'views/modern_sidebar.dart';
+import 'views/widgets/execution_panel.dart';
 
 void main() {
+  // Initialize controllers before runApp
+  WidgetsFlutterBinding.ensureInitialized();
   Get.put(PipelineController());
   Get.put(ExecutionController());
+  Get.put(DockerSearchController()); // ADD THIS LINE
+
   runApp(const MyApp());
 }
 
@@ -81,7 +87,8 @@ class MyApp extends StatelessWidget {
                   backgroundColor: Colors.transparent,
                   foregroundColor: Colors.white,
                   shadowColor: Colors.transparent,
-                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
                   textStyle: const TextStyle(fontWeight: FontWeight.w600),
                 ),
               ),
@@ -101,11 +108,122 @@ class MyApp extends StatelessWidget {
             ),
           ],
         ),
-        body: const Row(
+        body: Stack(
           children: [
-            ModernSidebar(),
-            Expanded(
-              child: ModernCanvas(),
+            const Row(
+              children: [
+                ModernSidebar(),
+                Expanded(
+                  child: ModernCanvas(),
+                ),
+              ],
+            ),
+            // Execution Panel
+            Obx(() {
+              return AnimatedPositioned(
+                duration: execCtrl.showPanel.value
+                    ? const Duration(milliseconds: 300)
+                    : const Duration(milliseconds: 200),
+                curve: Curves.easeInOut,
+                left: 0,
+                right: 0,
+                bottom: execCtrl.showPanel.value
+                    ? 28
+                    : -(execCtrl.panelHeight.value +
+                        28), // 28 is status bar height
+                height: execCtrl.panelHeight.value,
+                child: const ExecutionPanel(),
+              );
+            }),
+
+            // Status Bar
+            Positioned(
+              left: 0,
+              right: 0,
+              bottom: 0,
+              height: 28,
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12),
+                decoration: const BoxDecoration(
+                  color: Color(0xFF6366F1), // Primary color
+                  border: Border(top: BorderSide(color: Color(0xFF4F46E5))),
+                ),
+                child: Row(
+                  children: [
+                    // Toggle Panel Button
+                    InkWell(
+                      onTap: execCtrl.togglePanel,
+                      child: Obx(() => Container(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 8, vertical: 4),
+                            decoration: BoxDecoration(
+                              color: execCtrl.showPanel.value
+                                  ? Colors.white.withOpacity(0.2)
+                                  : Colors.transparent,
+                              borderRadius: BorderRadius.circular(4),
+                            ),
+                            child: Row(
+                              children: [
+                                Icon(
+                                  execCtrl.showPanel.value
+                                      ? Icons.keyboard_arrow_down
+                                      : Icons.keyboard_arrow_up,
+                                  size: 14,
+                                  color: Colors.white,
+                                ),
+                                const SizedBox(width: 6),
+                                const Text(
+                                  'Terminal',
+                                  style: TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          )),
+                    ),
+                    const VerticalDivider(
+                        color: Colors.white24,
+                        width: 24,
+                        indent: 6,
+                        endIndent: 6),
+                    Obx(() {
+                      if (execCtrl.isRunning.value) {
+                        return const Row(
+                          children: [
+                            SizedBox(
+                              width: 10,
+                              height: 10,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                valueColor:
+                                    AlwaysStoppedAnimation(Colors.white),
+                              ),
+                            ),
+                            SizedBox(width: 8),
+                            Text(
+                              'Running Pipeline...',
+                              style:
+                                  TextStyle(color: Colors.white, fontSize: 11),
+                            ),
+                          ],
+                        );
+                      }
+                      return const Text(
+                        'Ready',
+                        style: TextStyle(color: Colors.white70, fontSize: 11),
+                      );
+                    }),
+                    const Spacer(),
+                    const Text(
+                      'BioFlow v1.0.0',
+                      style: TextStyle(color: Colors.white54, fontSize: 11),
+                    ),
+                  ],
+                ),
+              ),
             ),
           ],
         ),

@@ -26,11 +26,7 @@ class _ParameterSidebarState extends State<ParameterSidebar> {
   Widget build(BuildContext context) {
     final controller = Get.find<PipelineController>();
 
-    return Positioned(
-      right: 0,
-      top: 0,
-      bottom: 0,
-      child: Container(
+    return Container(
         width: 350,
         decoration: const BoxDecoration(
           color: Colors.white,
@@ -65,7 +61,8 @@ class _ParameterSidebarState extends State<ParameterSidebar> {
                     decoration: BoxDecoration(
                       color: Colors.white,
                       borderRadius: BorderRadius.circular(8),
-                      border: Border.all(color: widget.node.primaryColor.withOpacity(0.2)),
+                      border: Border.all(
+                          color: widget.node.primaryColor.withOpacity(0.2)),
                     ),
                     child: Icon(
                       widget.node.icon,
@@ -97,6 +94,25 @@ class _ParameterSidebarState extends State<ParameterSidebar> {
                       ],
                     ),
                   ),
+                  IconButton(
+                    onPressed: () {
+                      controller.deleteNode(widget.node.id);
+                      controller.selectNode(null);
+                    },
+                    icon: const Icon(
+                      Icons.delete_outline,
+                      color: Color(0xFFEF4444),
+                      size: 20,
+                    ),
+                    tooltip: 'Delete block',
+                    style: IconButton.styleFrom(
+                      backgroundColor: Colors.white,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
                   IconButton(
                     onPressed: () => controller.selectNode(null),
                     icon: const Icon(
@@ -133,7 +149,7 @@ class _ParameterSidebarState extends State<ParameterSidebar> {
                             color: Color(0xFF0F172A),
                           ),
                         ),
-                        if (widget.node.category != BlockCategory.input && 
+                        if (widget.node.category != BlockCategory.input &&
                             widget.node.category != BlockCategory.output)
                           ElevatedButton.icon(
                             onPressed: () => _showAddParameterDialog(context),
@@ -142,8 +158,10 @@ class _ParameterSidebarState extends State<ParameterSidebar> {
                             style: ElevatedButton.styleFrom(
                               backgroundColor: widget.node.primaryColor,
                               foregroundColor: Colors.white,
-                              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                              textStyle: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 12, vertical: 8),
+                              textStyle: const TextStyle(
+                                  fontSize: 12, fontWeight: FontWeight.w600),
                               shape: RoundedRectangleBorder(
                                 borderRadius: BorderRadius.circular(6),
                               ),
@@ -167,15 +185,13 @@ class _ParameterSidebarState extends State<ParameterSidebar> {
               ),
             ),
           ],
-        ),
-      ),
-    );
+        ));
   }
 
   Widget _buildParameterItem(BlockParameter param, int index) {
     final controller = Get.find<PipelineController>();
-    final canDelete = widget.node.category != BlockCategory.input && 
-                     widget.node.category != BlockCategory.output;
+    final canDelete = widget.node.category != BlockCategory.input &&
+        widget.node.category != BlockCategory.output;
 
     return Container(
       margin: const EdgeInsets.only(bottom: 16),
@@ -201,7 +217,8 @@ class _ParameterSidebarState extends State<ParameterSidebar> {
               ),
               if (canDelete)
                 IconButton(
-                  onPressed: () => controller.removeNodeParameter(widget.node.id, index),
+                  onPressed: () =>
+                      controller.removeNodeParameter(widget.node.id, index),
                   icon: const Icon(Icons.delete_outline, size: 16),
                   style: IconButton.styleFrom(
                     foregroundColor: const Color(0xFFEF4444),
@@ -228,8 +245,10 @@ class _ParameterSidebarState extends State<ParameterSidebar> {
       case ParameterType.text:
         return TextFormField(
           initialValue: param.value?.toString() ?? '',
-          decoration: _inputDecoration(param.placeholder ?? 'Enter ${param.label.toLowerCase()}'),
-          onChanged: (value) => controller.updateNodeParameter(widget.node.id, param.key, value),
+          decoration: _inputDecoration(
+              param.placeholder ?? 'Enter ${param.label.toLowerCase()}'),
+          onChanged: (value) =>
+              controller.updateNodeParameter(widget.node.id, param.key, value),
         );
 
       case ParameterType.numeric:
@@ -254,7 +273,8 @@ class _ParameterSidebarState extends State<ParameterSidebar> {
               child: Text(option),
             );
           }).toList(),
-          onChanged: (value) => controller.updateNodeParameter(widget.node.id, param.key, value),
+          onChanged: (value) =>
+              controller.updateNodeParameter(widget.node.id, param.key, value),
         );
 
       case ParameterType.toggle:
@@ -273,7 +293,8 @@ class _ParameterSidebarState extends State<ParameterSidebar> {
               Switch(
                 value: param.value == true,
                 activeColor: widget.node.primaryColor,
-                onChanged: (value) => controller.updateNodeParameter(widget.node.id, param.key, value),
+                onChanged: (value) => controller.updateNodeParameter(
+                    widget.node.id, param.key, value),
               ),
             ],
           ),
@@ -303,8 +324,8 @@ class _ParameterSidebarState extends State<ParameterSidebar> {
                     param.value?.toString() ?? 'Select file...',
                     style: TextStyle(
                       fontSize: 14,
-                      color: param.value != null 
-                          ? const Color(0xFF374151) 
+                      color: param.value != null
+                          ? const Color(0xFF374151)
                           : const Color(0xFF9CA3AF),
                     ),
                   ),
@@ -444,7 +465,6 @@ class _ParameterSidebarState extends State<ParameterSidebar> {
   }
 }
 
-
 class AddParameterForm extends StatefulWidget {
   final String nodeId;
   final Color primaryColor;
@@ -499,7 +519,8 @@ class _AddParameterFormState extends State<AddParameterForm> {
             border: OutlineInputBorder(),
           ),
           onChanged: (value) {
-            final key = value.toLowerCase().replaceAll(RegExp(r'[^a-z0-9]'), '_');
+            final key =
+                value.toLowerCase().replaceAll(RegExp(r'[^a-z0-9]'), '_');
             _keyController.text = key;
           },
         ),
@@ -577,7 +598,7 @@ class _AddParameterFormState extends State<AddParameterForm> {
         type: _selectedType,
         placeholder: 'Enter ${_labelController.text.toLowerCase()}',
       );
-      
+
       Get.find<PipelineController>().addNodeParameter(widget.nodeId, parameter);
       Get.back();
     }
