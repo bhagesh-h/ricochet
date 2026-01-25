@@ -1,2 +1,2 @@
-# richochet
+# ricochet
 Code Free Workflow Builder
