@@ -1,4 +1,4 @@
-<img src="assets/logo.svg" width="100">
+<img src="assets/logo-nobg.png" width="100">
 
 # ricochet
 Code Free Workflow Builder
