@@ -19,7 +19,8 @@ class DockerSearchController extends GetxController {
     }
   }
 
-  Future<void> searchDockerImages(String query, {int pageSize = 10, bool officialOnly = true, int maxRetries = 2}) async {
+  Future<void> searchDockerImages(String query,
+      {int pageSize = 10, bool officialOnly = true, int maxRetries = 2}) async {
     searchQuery.value = query;
 
     if (query.isEmpty) {
@@ -33,12 +34,11 @@ class DockerSearchController extends GetxController {
 
     while (attempt < maxRetries) {
       try {
-        final url = Uri.parse(
-          _getDockerHubUrl('search/repositories/?'
-          'query=$query'
-          '&page_size=$pageSize'
-          '&is_official=$officialOnly')
-        );
+        final url = Uri.parse(_getDockerHubUrl('search/repositories/?'
+            'query=$query'
+            '&page_size=$pageSize'
+            '&is_official=$officialOnly'));
+        print(url);
         final response = await http.get(
           url,
           headers: {
@@ -51,7 +51,8 @@ class DockerSearchController extends GetxController {
           searchResults.value = searchResponse.results;
           break; // Success, exit retry loop
         } else {
-          errorMessage.value = 'Failed to search Docker images: ${response.statusCode}';
+          errorMessage.value =
+              'Failed to search Docker images: ${response.statusCode}';
           searchResults.clear();
           break; // HTTP error, don't retry
         }
@@ -63,9 +64,11 @@ class DockerSearchController extends GetxController {
               e.toString().contains('SocketException') ||
               e.toString().contains('Failed to fetch')) {
             if (kIsWeb) {
-              errorMessage.value = 'Network error: Unable to connect to Docker Hub. ';
+              errorMessage.value =
+                  'Network error: Unable to connect to Docker Hub. ';
             } else {
-              errorMessage.value = 'Network error: Please check your internet connection and app permissions';
+              errorMessage.value =
+                  'Network error: Please check your internet connection and app permissions';
             }
           } else {
             errorMessage.value = 'Error searching Docker images: $e';
@@ -81,9 +84,10 @@ class DockerSearchController extends GetxController {
     isLoading.value = false;
   }
 
-  Future<List<DockerTag>> getImageTags(String imageName, {int pageSize = 5, int maxRetries = 2}) async {
+  Future<List<DockerTag>> getImageTags(String imageName,
+      {int pageSize = 5, int maxRetries = 2}) async {
     int attempt = 0;
-    
+
     while (attempt < maxRetries) {
       try {
         // Handle official images (no owner) vs user images
@@ -91,10 +95,9 @@ class DockerSearchController extends GetxController {
         final owner = parts.length > 1 ? parts[0] : 'library';
         final repo = parts.length > 1 ? parts[1] : parts[0];
 
-        final url = Uri.parse(
-          _getDockerHubUrl('repositories/$owner/$repo/tags/?'
-          'page_size=$pageSize&page=1')
-        );
+        final url =
+            Uri.parse(_getDockerHubUrl('repositories/$owner/$repo/tags/?'
+                'page_size=$pageSize&page=1'));
 
         final response = await http.get(
           url,
@@ -119,9 +122,11 @@ class DockerSearchController extends GetxController {
               e.toString().contains('SocketException') ||
               e.toString().contains('Failed to fetch')) {
             if (kIsWeb) {
-              throw Exception('Network error: Unable to fetch tags due to CORS restrictions in web browsers');
+              throw Exception(
+                  'Network error: Unable to fetch tags due to CORS restrictions in web browsers');
             } else {
-              throw Exception('Network error: Unable to fetch tags. Please check your connection');
+              throw Exception(
+                  'Network error: Unable to fetch tags. Please check your connection');
             }
           } else {
             throw Exception('Error fetching tags: $e');

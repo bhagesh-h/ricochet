@@ -514,7 +514,7 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 ## 📧 Contact
 
 For questions, suggestions, or support, please open an issue on GitHub.
-
+Note :- TO work HOME we need to set for that particualr user export HOME="/Users/sonali"
 ---
 
 <div align="center">

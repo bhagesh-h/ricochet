@@ -3,7 +3,18 @@ import 'dart:ui';
 import 'package:flutter/material.dart';
 
 enum BlockCategory { input, output, processing, analysis, visualization }
-enum BlockStatus { pending, running, success, failed }
+
+enum BlockStatus {
+  idle, // Just placed on canvas
+  checking, // Checking if image exists
+  downloading, // Pulling Docker image
+  ready, // Image available, ready to execute
+  pending, // Waiting to execute
+  running, // Container executing
+  success, // Execution completed
+  failed, // Execution failed
+  error, // Configuration or download error
+}
 
 class BlockParameter {
   final String id;
@@ -42,6 +53,12 @@ class PipelineNode {
   bool isSelected;
   final String iconCodePoint;
 
+  // Docker image tracking
+  String? dockerImage; // e.g., "biocontainers/fastqc:latest"
+  double downloadProgress = 0.0; // 0.0 - 1.0
+  String? downloadStatus; // "Downloading layer 3/5"
+  bool isImageLocal = false; // Is image cached locally?
+
   PipelineNode({
     required this.id,
     required this.title,
@@ -49,12 +66,20 @@ class PipelineNode {
     required this.position,
     required this.category,
     required this.parameters,
-    this.status = BlockStatus.pending,
+    this.status = BlockStatus.idle,
     this.inputPorts = const ['input'],
     this.outputPorts = const ['output'],
     this.isSelected = false,
     required this.iconCodePoint,
-  });
+    this.dockerImage,
+    this.downloadProgress = 0.0,
+    this.downloadStatus,
+    this.isImageLocal = false,
+    List<String>? logs,
+  }) : logs = logs ?? [];
+
+  // Execution logs
+  final List<String> logs;
 
   Color get primaryColor {
     switch (category) {

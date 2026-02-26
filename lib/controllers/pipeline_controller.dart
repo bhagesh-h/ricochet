@@ -1,9 +1,17 @@
 import 'package:get/get.dart';
 import 'package:uuid/uuid.dart';
 import '../models/pipeline_node.dart';
+import '../models/docker_pull_progress.dart';
+import '../services/docker_service.dart';
+import '../services/workspace_service.dart';
 import 'dart:ui';
+import 'dart:convert';
+import 'dart:io';
 
 class PipelineController extends GetxController {
+  final DockerService _dockerService = DockerService();
+  final WorkspaceService _workspaceService = WorkspaceService();
+
   var nodes = <PipelineNode>[].obs;
   var connections = <Connection>[].obs;
   var selectedNode = Rxn<String>();
@@ -12,66 +20,6 @@ class PipelineController extends GetxController {
   void onInit() {
     super.onInit();
     // Canvas starts empty - users can drag blocks from sidebar
-  }
-
-  void _initializeDefaultBlocks() {
-    // Clear existing nodes first
-    nodes.clear();
-
-    // Center of the 50000x50000 canvas
-    const double centerX = 25000;
-    const double centerY = 25000;
-
-    // Input block
-    final inputBlock = PipelineNode(
-      id: 'input-default',
-      title: 'Input Data',
-      description: 'Upload your data files',
-      position: const Offset(centerX - 300, centerY),
-      category: BlockCategory.input,
-      iconCodePoint: '0xe2c7', // download icon
-      parameters: [
-        BlockParameter(
-          key: 'file_path',
-          label: 'Select File',
-          type: ParameterType.file,
-          placeholder: 'Choose file from your computer',
-          required: true,
-        ),
-      ],
-      outputPorts: ['data'],
-    );
-
-    // Output block
-    final outputBlock = PipelineNode(
-      id: 'output-default',
-      title: 'Output Results',
-      description: 'Export processed data',
-      position: const Offset(centerX + 300, centerY),
-      category: BlockCategory.output,
-      iconCodePoint: '0xe2c6', // upload icon
-      parameters: [
-        BlockParameter(
-          key: 'output_name',
-          label: 'Output Filename',
-          type: ParameterType.text,
-          value: 'results',
-          placeholder: 'Enter filename',
-        ),
-        BlockParameter(
-          key: 'format',
-          label: 'Export Format',
-          type: ParameterType.dropdown,
-          options: ['JSON', 'CSV', 'TXT', 'HTML', 'PDF'],
-          value: 'JSON',
-        ),
-      ],
-      inputPorts: ['result'],
-    );
-
-    nodes.addAll([inputBlock, outputBlock]);
-    // Force update to ensure UI reflects changes
-    update();
   }
 
   void addNode(String nodeType, Offset position) {
@@ -344,13 +292,15 @@ class PipelineController extends GetxController {
   PipelineNode _createDockerNode(String imageName, Offset position) {
     final id = const Uuid().v4();
 
-    return PipelineNode(
+    final node = PipelineNode(
       id: id,
       title: imageName,
       description: 'Docker container execution',
       position: position,
       category: BlockCategory.processing,
       iconCodePoint: '0xe1d4', // storage icon
+      dockerImage: imageName,
+      status: BlockStatus.checking, // Start with checking status
       parameters: [
         BlockParameter(
           key: 'image',
@@ -393,6 +343,302 @@ class PipelineController extends GetxController {
         ),
       ],
     );
+
+    // Check and pull image asynchronously
+    _checkAndPullImage(node);
+
+    return node;
+  }
+
+  /// Check if Docker image exists locally, pull if not
+  Future<void> _checkAndPullImage(PipelineNode node) async {
+    if (node.dockerImage == null) return;
+
+    try {
+      // Check if image exists locally
+      final exists = await _dockerService.imageExists(node.dockerImage!);
+
+      if (exists) {
+        // Image is cached
+        node.status = BlockStatus.ready;
+        node.isImageLocal = true;
+        node.downloadStatus = 'Image ready';
+        update();
+        print('✅ Image ${node.dockerImage} is already cached');
+      } else {
+        // Need to pull image
+        node.status = BlockStatus.downloading;
+        node.downloadProgress = 0.0;
+        node.downloadStatus = 'Starting download...';
+        update([node.id]); // Update only this node
+
+        print('📥 Pulling image ${node.dockerImage}...');
+
+        // Listen to pull progress stream
+        await for (final progress
+            in _dockerService.pullImage(node.dockerImage!)) {
+          node.downloadProgress = progress.percentage;
+          node.downloadStatus = progress.message;
+
+          if (progress.status == PullStatus.complete) {
+            node.status = BlockStatus.ready;
+            node.isImageLocal = true;
+          } else if (progress.status == PullStatus.error) {
+            node.status = BlockStatus.error;
+          }
+
+          update([node.id]); // Update only this node
+        }
+      }
+    } catch (e) {
+      node.downloadStatus = 'Error: $e';
+      update([node.id]); // Update only this node
+    }
+  }
+
+  /// Executes a single node
+  Future<void> executeNode(String nodeId,
+      {Map<String, String>? inputFiles}) async {
+    final node = nodes.firstWhereOrNull((n) => n.id == nodeId);
+    if (node == null) return;
+
+    try {
+      setNodeStatus(nodeId, BlockStatus.running);
+
+      // Clear previous logs
+      node.logs.clear();
+      update([node.id]);
+
+      // Create output file
+      final outputFilePath = await _workspaceService.getNodeOutputFilePath(
+        node.id,
+        node.title,
+        filename: 'output.txt',
+      );
+      final outputFile = File(outputFilePath);
+      final outputSink = outputFile.openWrite();
+
+      // Parse parameters
+      final commandParam = node.parameters
+          .firstWhereOrNull((p) => p.key == 'command')
+          ?.value
+          ?.toString();
+
+      // Use shell wrapper for commands to handle complex syntax
+      List<String> command = [];
+      if (commandParam != null && commandParam.isNotEmpty) {
+        // Wrap command in shell to handle pipes, redirects, etc.
+        command = ['sh', '-c', commandParam];
+      }
+
+      final volumesParam = node.parameters
+          .firstWhereOrNull((p) => p.key == 'volumes')
+          ?.value
+          ?.toString();
+      final volumes =
+          volumesParam?.split(' ').where((s) => s.isNotEmpty).toList() ?? [];
+
+      final envParam = node.parameters
+          .firstWhereOrNull((p) => p.key == 'environment')
+          ?.value
+          ?.toString();
+      final environment =
+          envParam?.split(' ').where((s) => s.isNotEmpty).toList() ?? [];
+
+      final portsParam = node.parameters
+          .firstWhereOrNull((p) => p.key == 'ports')
+          ?.value
+          ?.toString();
+      final ports =
+          portsParam?.split(' ').where((s) => s.isNotEmpty).toList() ?? [];
+
+      // Add input files to volumes and environment
+      if (inputFiles != null) {
+        inputFiles.forEach((portName, filePath) {
+          final fileName = filePath.split(Platform.pathSeparator).last;
+          final containerPath = '/inputs/$fileName';
+
+          // Mount file read-only
+          volumes.add('$filePath:$containerPath:ro');
+
+          // Add env var for the input path
+          // e.g. INPUT_DATA=/inputs/data.txt
+          environment.add('INPUT_${portName.toUpperCase()}=$containerPath');
+
+          // Also add a generic INPUT_FILE var if it's the first input
+          if (environment.every((e) => !e.startsWith('INPUT_FILE='))) {
+            environment.add('INPUT_FILE=$containerPath');
+          }
+        });
+      }
+
+      final process = await _dockerService.runContainer(
+        image: node.dockerImage!,
+        containerName: node.id,
+        command: command,
+        volumes: volumes,
+        environment: environment,
+        ports: ports,
+      );
+
+      // Stream logs and write to file
+      process.stdout.transform(utf8.decoder).listen((data) {
+        final lines = data.split('\n').where((l) => l.isNotEmpty);
+        for (final line in lines) {
+          print('🐳 [${node.title}] STDOUT: $line');
+          node.logs.add('[STDOUT] $line');
+          outputSink.writeln(line); // Write to file
+        }
+        update([node.id]); // Update UI for logs
+      });
+
+      process.stderr.transform(utf8.decoder).listen((data) {
+        final lines = data.split('\n').where((l) => l.isNotEmpty);
+        for (final line in lines) {
+          print('⚠️ [${node.title}] STDERR: $line');
+          node.logs.add('[STDERR] $line');
+          outputSink.writeln('[ERROR] $line'); // Write errors to file too
+        }
+        update([node.id]); // Update UI for logs
+      });
+
+      final exitCode = await process.exitCode;
+
+      // Close the output file
+      await outputSink.flush();
+      await outputSink.close();
+
+      print('🏁 Node ${node.title} finished with exit code $exitCode');
+      print('📁 Output saved to: $outputFilePath');
+
+      // Store output file path in node
+      node.logs.add('[SYSTEM] Output saved to: $outputFilePath');
+
+      // Add output file path as a parameter for reference
+      final outputParam =
+          node.parameters.firstWhereOrNull((p) => p.key == '_output_file');
+      if (outputParam != null) {
+        outputParam.value = outputFilePath;
+      } else {
+        node.parameters.add(BlockParameter(
+          key: '_output_file',
+          label: 'Output File',
+          type: ParameterType.text,
+          value: outputFilePath,
+        ));
+      }
+
+      if (exitCode == 0) {
+        node.status = BlockStatus.success;
+      } else {
+        // If manually stopped, it might have a specific exit code (e.g. 137)
+        // For now just mark as failed if not 0
+        node.status = BlockStatus.failed;
+      }
+      update([node.id]);
+    } catch (e) {
+      print('❌ Error executing node: $e');
+      node.status = BlockStatus.error;
+      update([node.id]);
+    }
+  }
+
+  /// Stop a running node
+  Future<void> stopNode(String nodeId) async {
+    final node = nodes.firstWhereOrNull((n) => n.id == nodeId);
+    if (node == null) return;
+
+    try {
+      print('🛑 Stopping node ${node.title}...');
+      await _dockerService.stopContainer(node.id);
+      node.logs.add('[SYSTEM] Execution stopped by user');
+      node.status = BlockStatus.failed; // Or a new 'stopped' status
+      update([node.id]);
+    } catch (e) {
+      print('❌ Error stopping node: $e');
+      node.logs.add('[SYSTEM] Error stopping: $e');
+      update([node.id]);
+    }
+  }
+
+  /// Returns the nodes in topological order (execution order).
+  /// Throws an exception if a cycle is detected.
+  List<PipelineNode> getExecutionOrder() {
+    // 1. Build adjacency list and in-degree map
+    final inDegree = <String, int>{};
+    final adjacencyList = <String, List<String>>{};
+
+    // Initialize for all nodes
+    for (var node in nodes) {
+      inDegree[node.id] = 0;
+      adjacencyList[node.id] = [];
+    }
+
+    // Populate from connections
+    for (var connection in connections) {
+      // Ensure nodes still exist (in case of deletion)
+      if (inDegree.containsKey(connection.toNodeId) &&
+          inDegree.containsKey(connection.fromNodeId)) {
+        adjacencyList[connection.fromNodeId]!.add(connection.toNodeId);
+        inDegree[connection.toNodeId] = inDegree[connection.toNodeId]! + 1;
+      }
+    }
+
+    // 2. Initialize queue with nodes having in-degree 0
+    final queue = <String>[];
+    inDegree.forEach((nodeId, degree) {
+      if (degree == 0) {
+        queue.add(nodeId);
+      }
+    });
+
+    // 3. Process queue (Kahn's algorithm)
+    final sortedNodeIds = <String>[];
+    while (queue.isNotEmpty) {
+      final u = queue.removeAt(0);
+      sortedNodeIds.add(u);
+
+      if (adjacencyList.containsKey(u)) {
+        for (var v in adjacencyList[u]!) {
+          inDegree[v] = inDegree[v]! - 1;
+          if (inDegree[v] == 0) {
+            queue.add(v);
+          }
+        }
+      }
+    }
+
+    // 4. Check for cycles
+    if (sortedNodeIds.length != nodes.length) {
+      throw Exception('Cycle detected in pipeline! Please remove loops.');
+    }
+
+    // 5. Map IDs back to PipelineNode objects
+    return sortedNodeIds
+        .map((id) => nodes.firstWhere((n) => n.id == id))
+        .toList();
+  }
+
+  /// Opens the output directory in the file explorer
+  Future<void> openOutputDirectory() async {
+    try {
+      final workspacePath = await _workspaceService.getWorkspacePath();
+      final currentRunPath = await _workspaceService.getCurrentRunPath();
+
+      final pathToOpen = currentRunPath ?? workspacePath;
+
+      if (Platform.isMacOS) {
+        await Process.run('open', [pathToOpen]);
+      } else if (Platform.isWindows) {
+        await Process.run('explorer', [pathToOpen]);
+      } else if (Platform.isLinux) {
+        await Process.run('xdg-open', [pathToOpen]);
+      }
+
+      print('📂 Opened directory: $pathToOpen');
+    } catch (e) {
+      print('❌ Error opening directory: $e');
+    }
   }
 
   void updateNodePosition(String id, Offset newPosition) {
@@ -472,7 +718,7 @@ class PipelineController extends GetxController {
     nodes.clear();
     connections.clear();
     selectedNode.value = null;
-    _initializeDefaultBlocks();
+    // Don't initialize default blocks - give users a truly blank canvas
   }
 
   void setNodeStatus(String id, BlockStatus status) {

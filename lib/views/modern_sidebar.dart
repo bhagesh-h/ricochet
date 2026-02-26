@@ -34,38 +34,6 @@ class _ModernSidebarState extends State<ModernSidebar> {
       'color': Color(0xFF3B82F6),
       'bgColor': Color(0xFFEFF6FF),
     },
-    {
-      'name': 'FastQC',
-      'category': 'Quality Control',
-      'description': 'Assess sequencing data quality',
-      'icon': Icons.analytics_rounded,
-      'color': Color(0xFF10B981),
-      'bgColor': Color(0xFFF0FDF4),
-    },
-    {
-      'name': 'Trimmomatic',
-      'category': 'Data Processing',
-      'description': 'Trim and filter reads',
-      'icon': Icons.content_cut_rounded,
-      'color': Color(0xFF8B5CF6),
-      'bgColor': Color(0xFFFAF5FF),
-    },
-    {
-      'name': 'BWA',
-      'category': 'Alignment',
-      'description': 'Align sequences to reference',
-      'icon': Icons.compare_arrows_rounded,
-      'color': Color(0xFF8B5CF6),
-      'bgColor': Color(0xFFFAF5FF),
-    },
-    {
-      'name': 'Variant Caller',
-      'category': 'Analysis',
-      'description': 'Identify genetic variants',
-      'icon': Icons.search_rounded,
-      'color': Color(0xFF10B981),
-      'bgColor': Color(0xFFF0FDF4),
-    },
   ];
 
   @override

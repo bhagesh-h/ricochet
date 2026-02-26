@@ -3,16 +3,19 @@ import 'package:get/get.dart';
 import 'package:n8n_application_2/controllers/docker_search_controller.dart';
 import 'controllers/pipeline_controller.dart';
 import 'controllers/execution_controller.dart';
+import 'controllers/docker_controller.dart';
 import 'views/modern_canvas.dart';
 import 'views/modern_sidebar.dart';
 import 'views/widgets/execution_panel.dart';
+import 'views/widgets/docker_status_banner.dart';
 
 void main() {
   // Initialize controllers before runApp
   WidgetsFlutterBinding.ensureInitialized();
   Get.put(PipelineController());
   Get.put(ExecutionController());
-  Get.put(DockerSearchController()); // ADD THIS LINE
+  Get.put(DockerSearchController());
+  Get.put(DockerController()); // Docker detection and health checks
 
   runApp(const MyApp());
 }
@@ -23,6 +26,7 @@ class MyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final ExecutionController execCtrl = Get.find();
+    final DockerController dockerCtrl = Get.find();
 
     return GetMaterialApp(
       title: 'Pipeline Designer',
@@ -64,35 +68,49 @@ class MyApp extends StatelessWidget {
             ],
           ),
           actions: [
-            Container(
-              margin: const EdgeInsets.only(right: 12),
-              decoration: BoxDecoration(
-                gradient: const LinearGradient(
-                  colors: [Color(0xFF10B981), Color(0xFF059669)],
-                ),
-                borderRadius: BorderRadius.circular(8),
-                boxShadow: [
-                  BoxShadow(
-                    color: const Color(0xFF10B981).withOpacity(0.25),
-                    blurRadius: 8,
-                    offset: const Offset(0, 3),
+            Obx(() {
+              final isDockerReady = dockerCtrl.isReady;
+              return Tooltip(
+                message: isDockerReady
+                    ? 'Execute pipeline'
+                    : 'Docker is not running. Start Docker Desktop to execute pipelines.',
+                child: Container(
+                  margin: const EdgeInsets.only(right: 12),
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      colors: isDockerReady
+                          ? [const Color(0xFF10B981), const Color(0xFF059669)]
+                          : [Colors.grey.shade400, Colors.grey.shade500],
+                    ),
+                    borderRadius: BorderRadius.circular(8),
+                    boxShadow: isDockerReady
+                        ? [
+                            BoxShadow(
+                              color: const Color(0xFF10B981).withOpacity(0.25),
+                              blurRadius: 8,
+                              offset: const Offset(0, 3),
+                            ),
+                          ]
+                        : [],
                   ),
-                ],
-              ),
-              child: ElevatedButton.icon(
-                onPressed: execCtrl.runPipeline,
-                icon: const Icon(Icons.play_arrow, size: 18),
-                label: const Text('Execute'),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.transparent,
-                  foregroundColor: Colors.white,
-                  shadowColor: Colors.transparent,
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-                  textStyle: const TextStyle(fontWeight: FontWeight.w600),
+                  child: ElevatedButton.icon(
+                    onPressed: isDockerReady ? execCtrl.runPipeline : null,
+                    icon: const Icon(Icons.play_arrow, size: 18),
+                    label: const Text('Execute'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.transparent,
+                      foregroundColor: Colors.white,
+                      disabledBackgroundColor: Colors.transparent,
+                      disabledForegroundColor: Colors.white70,
+                      shadowColor: Colors.transparent,
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 20, vertical: 12),
+                      textStyle: const TextStyle(fontWeight: FontWeight.w600),
+                    ),
+                  ),
                 ),
-              ),
-            ),
+              );
+            }),
             Container(
               margin: const EdgeInsets.only(right: 20),
               decoration: BoxDecoration(
@@ -110,11 +128,20 @@ class MyApp extends StatelessWidget {
         ),
         body: Stack(
           children: [
-            const Row(
+            Column(
               children: [
-                ModernSidebar(),
+                // Docker status banner
+                const DockerStatusBanner(),
+                // Main content
                 Expanded(
-                  child: ModernCanvas(),
+                  child: Row(
+                    children: [
+                      const ModernSidebar(),
+                      Expanded(
+                        child: const ModernCanvas(),
+                      ),
+                    ],
+                  ),
                 ),
               ],
             ),
