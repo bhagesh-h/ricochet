@@ -1,7 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
-import 'package:n8n_application_2/views/widgets/draggable_connection_point.dart';
-import 'package:n8n_application_2/views/widgets/n8n_block_widget.dart';
 import '../../controllers/pipeline_controller.dart';
 
 class ConnectionDot extends StatefulWidget {
@@ -79,13 +77,13 @@ class _ConnectionDotState extends State<ConnectionDot>
               child: DragTarget<ConnectionData>(
                 onWillAccept: (data) {
                   return data != null &&
-                         data.nodeId != widget.nodeId &&
-                         data.isOutput != widget.isOutput;
+                      data.nodeId != widget.nodeId &&
+                      data.isOutput != widget.isOutput;
                 },
                 onAcceptWithDetails: (details) {
                   final sourceData = details.data;
                   final controller = Get.find<PipelineController>();
-                  
+
                   if (widget.isOutput) {
                     controller.addConnection(widget.nodeId, sourceData.nodeId);
                   } else {
@@ -101,17 +99,21 @@ class _ConnectionDotState extends State<ConnectionDot>
                 final renderBox = context.findRenderObject() as RenderBox?;
                 if (renderBox != null) {
                   final offset = renderBox.localToGlobal(Offset.zero);
-                  final canvasRenderBox = widget.canvasKey.currentContext?.findRenderObject() as RenderBox?;
+                  final canvasRenderBox = widget.canvasKey.currentContext
+                      ?.findRenderObject() as RenderBox?;
                   if (canvasRenderBox != null) {
                     final localOffset = canvasRenderBox.globalToLocal(offset);
-                    widget.onDragStart?.call(widget.nodeId, widget.isOutput, localOffset);
+                    widget.onDragStart
+                        ?.call(widget.nodeId, widget.isOutput, localOffset);
                   }
                 }
               },
               onDragUpdate: (details) {
-                final canvasRenderBox = widget.canvasKey.currentContext?.findRenderObject() as RenderBox?;
+                final canvasRenderBox = widget.canvasKey.currentContext
+                    ?.findRenderObject() as RenderBox?;
                 if (canvasRenderBox != null) {
-                  final localOffset = canvasRenderBox.globalToLocal(details.globalPosition);
+                  final localOffset =
+                      canvasRenderBox.globalToLocal(details.globalPosition);
                   widget.onDragUpdate?.call(localOffset);
                 }
               },
@@ -164,4 +166,15 @@ class _ConnectionDotState extends State<ConnectionDot>
       ),
     );
   }
+}
+
+/// Data passed during a connection drag gesture.
+class ConnectionData {
+  final String nodeId;
+  final bool isOutput;
+
+  ConnectionData({
+    required this.nodeId,
+    required this.isOutput,
+  });
 }

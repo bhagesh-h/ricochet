@@ -1,20 +1,20 @@
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
-import 'package:n8n_application_2/models/pipeline_node.dart';
-import 'package:n8n_application_2/views/widgets/n8n_connection_painter.dart';
-import 'package:n8n_application_2/views/widgets/parameter_sidebar.dart';
+import 'package:bioflow/models/pipeline_node.dart';
+import 'widgets/connection_painter.dart';
+import 'package:bioflow/views/widgets/parameter_sidebar.dart';
 import '../controllers/pipeline_controller.dart';
-import 'widgets/n8n_block_widget.dart';
+import 'widgets/pipeline_block_widget.dart';
 
-class ModernCanvas extends StatefulWidget {
-  const ModernCanvas({Key? key}) : super(key: key);
+class PipelineCanvas extends StatefulWidget {
+  const PipelineCanvas({Key? key}) : super(key: key);
 
   @override
-  State<ModernCanvas> createState() => _ModernCanvasState();
+  State<PipelineCanvas> createState() => _PipelineCanvasState();
 }
 
-class _ModernCanvasState extends State<ModernCanvas>
+class _PipelineCanvasState extends State<PipelineCanvas>
     with TickerProviderStateMixin {
   final GlobalKey _canvasKey = GlobalKey();
   final TransformationController _transformationController =
@@ -179,7 +179,7 @@ class _ModernCanvasState extends State<ModernCanvas>
   Widget _buildConnections(PipelineController controller) {
     return Obx(() {
       return CustomPaint(
-        painter: N8NConnectionPainter(
+        painter: ConnectionPainter(
           nodes: controller.nodes.toList(),
           connections: controller.connections.toList(),
         ),
@@ -543,7 +543,7 @@ class _DraggableNodeState extends State<_DraggableNode> {
               ),
             ],
           ),
-          child: N8NBlockWidget(
+          child: PipelineBlockWidget(
             node: widget.node,
             canvasKey: widget.canvasKey,
             zoom: 1.0, // Zoom is handled by InteractiveViewer

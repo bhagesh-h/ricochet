@@ -1,14 +1,14 @@
-// views/widgets/n8n_connection_painter.dart
+// views/widgets/connection_painter.dart
 import 'dart:math';
 
 import 'package:flutter/material.dart';
 import '../../models/pipeline_node.dart';
 
-class N8NConnectionPainter extends CustomPainter {
+class ConnectionPainter extends CustomPainter {
   final List<PipelineNode> nodes;
   final List<Connection> connections;
 
-  N8NConnectionPainter({
+  ConnectionPainter({
     required this.nodes,
     required this.connections,
   });
@@ -110,7 +110,7 @@ class N8NConnectionPainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(N8NConnectionPainter oldDelegate) {
+  bool shouldRepaint(ConnectionPainter oldDelegate) {
     return oldDelegate.nodes != nodes || oldDelegate.connections != connections;
   }
 }

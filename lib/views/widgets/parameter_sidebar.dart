@@ -2,7 +2,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:get/get.dart';
-import 'package:n8n_application_2/models/pipeline_node.dart';
+import 'package:bioflow/models/pipeline_node.dart';
 import '../../controllers/pipeline_controller.dart';
 
 class ParameterSidebar extends StatefulWidget {

@@ -4,7 +4,7 @@ import '../../controllers/pipeline_controller.dart';
 import '../../models/pipeline_node.dart';
 import 'connection_dot.dart';
 
-class N8NBlockWidget extends StatefulWidget {
+class PipelineBlockWidget extends StatefulWidget {
   final PipelineNode node;
   final GlobalKey canvasKey;
   final double zoom;
@@ -12,7 +12,7 @@ class N8NBlockWidget extends StatefulWidget {
   final Function(Offset)? onConnectionDragUpdate;
   final Function()? onConnectionDragEnd;
 
-  const N8NBlockWidget({
+  const PipelineBlockWidget({
     Key? key,
     required this.node,
     required this.canvasKey,
@@ -23,10 +23,10 @@ class N8NBlockWidget extends StatefulWidget {
   }) : super(key: key);
 
   @override
-  State<N8NBlockWidget> createState() => _N8NBlockWidgetState();
+  State<PipelineBlockWidget> createState() => _PipelineBlockWidgetState();
 }
 
-class _N8NBlockWidgetState extends State<N8NBlockWidget>
+class _PipelineBlockWidgetState extends State<PipelineBlockWidget>
     with SingleTickerProviderStateMixin {
   late AnimationController _hoverController;
   late Animation<double> _scaleAnimation;

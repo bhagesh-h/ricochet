@@ -1,11 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
-import 'package:n8n_application_2/controllers/docker_search_controller.dart';
+import 'package:bioflow/controllers/docker_search_controller.dart';
 import 'controllers/pipeline_controller.dart';
 import 'controllers/execution_controller.dart';
 import 'controllers/docker_controller.dart';
-import 'views/modern_canvas.dart';
-import 'views/modern_sidebar.dart';
+import 'views/pipeline_canvas.dart';
+import 'views/tool_sidebar.dart';
 import 'views/widgets/execution_panel.dart';
 import 'views/widgets/docker_status_banner.dart';
 
@@ -136,9 +136,9 @@ class MyApp extends StatelessWidget {
                 Expanded(
                   child: Row(
                     children: [
-                      const ModernSidebar(),
+                      const ToolSidebar(),
                       Expanded(
-                        child: const ModernCanvas(),
+                        child: const PipelineCanvas(),
                       ),
                     ],
                   ),

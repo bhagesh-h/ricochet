@@ -4,14 +4,14 @@ import 'package:get/get.dart';
 import '../controllers/docker_search_controller.dart';
 import '../models/docker_image.dart';
 
-class ModernSidebar extends StatefulWidget {
-  const ModernSidebar({Key? key}) : super(key: key);
+class ToolSidebar extends StatefulWidget {
+  const ToolSidebar({Key? key}) : super(key: key);
 
   @override
-  State<ModernSidebar> createState() => _ModernSidebarState();
+  State<ToolSidebar> createState() => _ToolSidebarState();
 }
 
-class _ModernSidebarState extends State<ModernSidebar> {
+class _ToolSidebarState extends State<ToolSidebar> {
   final DockerSearchController _searchController =
       Get.find<DockerSearchController>();
   final TextEditingController _searchTextController = TextEditingController();
@@ -607,39 +607,5 @@ class _ModernSidebarState extends State<ModernSidebar> {
         ),
       ],
     );
-  }
-}
-
-// Legacy compatibility classes
-class Sidebar extends StatelessWidget {
-  const Sidebar({Key? key}) : super(key: key);
-
-  @override
-  Widget build(BuildContext context) {
-    return const ModernSidebar();
-  }
-}
-
-class CanvasArea extends StatelessWidget {
-  const CanvasArea({Key? key}) : super(key: key);
-
-  @override
-  Widget build(BuildContext context) {
-    // Return empty widget since ModernCanvas is imported in main.dart
-    return const SizedBox();
-  }
-}
-
-// ExecutionPanel moved to views/widgets/execution_panel.dart
-
-class TempConnection extends GetxController {
-  String? sourceId;
-
-  void setSource(String id) {
-    sourceId = id;
-  }
-
-  void clear() {
-    sourceId = null;
   }
 }
