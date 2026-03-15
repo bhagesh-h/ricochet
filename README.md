@@ -1,4 +1,5 @@
 <img src="assets/logo-nobg.png" width="100">
+
 # BioFlow — Visual Bioinformatics Pipeline Designer
 
 <div align="center">
