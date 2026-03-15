@@ -174,8 +174,11 @@ class _ParameterSidebarState extends State<ParameterSidebar> {
                   Expanded(
                     child: ListView.builder(
                       padding: const EdgeInsets.symmetric(horizontal: 20),
-                      itemCount: widget.node.parameters.length,
+                      itemCount: widget.node.parameters.length + 1,
                       itemBuilder: (context, index) {
+                        if (index == widget.node.parameters.length) {
+                          return _buildExportSettings();
+                        }
                         final param = widget.node.parameters[index];
                         return _buildParameterItem(param, index);
                       },
@@ -343,6 +346,79 @@ class _ParameterSidebarState extends State<ParameterSidebar> {
       default:
         return const SizedBox();
     }
+  }
+
+  Widget _buildExportSettings() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const SizedBox(height: 24),
+        const Text(
+          'Export Settings',
+          style: TextStyle(
+            fontSize: 16,
+            fontWeight: FontWeight.w600,
+            color: Color(0xFF0F172A),
+          ),
+        ),
+        const SizedBox(height: 16),
+        Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: const Color(0xFFF8FAFC),
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(color: const Color(0xFFE2E8F0)),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'Output File Name (Optional)',
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                  color: Color(0xFF374151),
+                ),
+              ),
+              const SizedBox(height: 8),
+              TextFormField(
+                initialValue: widget.node.outputFileName ?? '',
+                decoration: _inputDecoration('e.g., results.csv, output.fastq'),
+                onChanged: (value) {
+                  setState(() {
+                    widget.node.outputFileName = value.isEmpty ? null : value;
+                  });
+                },
+              ),
+              const SizedBox(height: 16),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  const Text(
+                    'Is Aggregator Node',
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                      color: Color(0xFF374151),
+                    ),
+                  ),
+                  Switch(
+                    value: widget.node.isAggregator,
+                    activeColor: widget.node.primaryColor,
+                    onChanged: (value) {
+                      setState(() {
+                        widget.node.isAggregator = value;
+                      });
+                    },
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 24),
+      ],
+    );
   }
 
   InputDecoration _inputDecoration(String hintText) {

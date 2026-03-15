@@ -1,5 +1,6 @@
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:get/get.dart';
 import 'package:bioflow/models/pipeline_node.dart';
 import 'widgets/connection_painter.dart';
@@ -17,6 +18,7 @@ class PipelineCanvas extends StatefulWidget {
 class _PipelineCanvasState extends State<PipelineCanvas>
     with TickerProviderStateMixin {
   final GlobalKey _canvasKey = GlobalKey();
+  final FocusNode _focusNode = FocusNode();
   final TransformationController _transformationController =
       TransformationController();
   late AnimationController _fitAnimationController;
@@ -33,7 +35,9 @@ class _PipelineCanvasState extends State<PipelineCanvas>
   Offset? _dragStartPoint;
   Offset? _dragCurrentPoint;
   String? _dragSourceNodeId;
-  bool _isOutputDrag = false;
+
+  // For connection hover / click-to-delete
+  String? _hoveredConnectionId;
 
   @override
   void initState() {
@@ -48,6 +52,7 @@ class _PipelineCanvasState extends State<PipelineCanvas>
     // Center the view initially
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _centerView();
+      _focusNode.requestFocus();
     });
   }
 
@@ -56,6 +61,7 @@ class _PipelineCanvasState extends State<PipelineCanvas>
     _fitAnimationController.dispose();
     _transformationController.removeListener(_onTransformationChanged);
     _transformationController.dispose();
+    _focusNode.dispose();
     super.dispose();
   }
 
@@ -69,122 +75,243 @@ class _PipelineCanvasState extends State<PipelineCanvas>
   Widget build(BuildContext context) {
     final PipelineController controller = Get.find();
 
-    return Container(
-      color: const Color(0xFFF7F8FA),
-      child: Stack(
-        children: [
-          // Optimized Grid Background - Draws only what's visible
-          Positioned.fill(
-            child: RepaintBoundary(
-              child: CustomPaint(
-                painter: N8NGridPainter(
-                  transformationController: _transformationController,
+    return Focus(
+      focusNode: _focusNode,
+      autofocus: true,
+      onKeyEvent: (node, event) => _handleKeyEvent(event, controller),
+      child: GestureDetector(
+        // Tap on empty canvas → deselect node & hovered connection
+        onTap: () {
+          controller.selectNode(null);
+          setState(() => _hoveredConnectionId = null);
+          _focusNode.requestFocus();
+        },
+        child: Container(
+          color: const Color(0xFFF7F8FA),
+          child: Stack(
+            children: [
+              // Optimized Grid Background - Draws only what's visible
+              Positioned.fill(
+                child: RepaintBoundary(
+                  child: CustomPaint(
+                    painter: N8NGridPainter(
+                      transformationController: _transformationController,
+                    ),
+                  ),
                 ),
               ),
-            ),
-          ),
 
-          // Main canvas area
-          DragTarget<String>(
-            onAcceptWithDetails: (details) {
-              _handleDropFromSidebar(details);
-            },
-            builder: (context, candidateData, rejectedData) {
-              return InteractiveViewer(
-                transformationController: _transformationController,
-                minScale: _minZoom,
-                maxScale: _maxZoom,
-                boundaryMargin: const EdgeInsets.all(double.infinity),
-                constrained: false,
-                panEnabled: true,
-                scaleEnabled: true,
-                child: SizedBox(
-                  width: _canvasSize,
-                  height: _canvasSize,
-                  child: Stack(
-                    key: _canvasKey,
-                    children: [
-                      // Connection lines
-                      Positioned.fill(
-                        child: _buildConnections(controller),
-                      ),
-
-                      // Temporary drag connection line
-                      if (_dragStartPoint != null && _dragCurrentPoint != null)
-                        Positioned.fill(
-                          child: CustomPaint(
-                            painter: _DragConnectionPainter(
-                              startPoint: _dragStartPoint!,
-                              endPoint: _dragCurrentPoint!,
-                              color: _getDragConnectionColor(),
-                            ),
+              // Main canvas area
+              DragTarget<String>(
+                onAcceptWithDetails: (details) {
+                  _handleDropFromSidebar(details);
+                },
+                builder: (context, candidateData, rejectedData) {
+                  return InteractiveViewer(
+                    transformationController: _transformationController,
+                    minScale: _minZoom,
+                    maxScale: _maxZoom,
+                    boundaryMargin: const EdgeInsets.all(double.infinity),
+                    constrained: false,
+                    panEnabled: true,
+                    scaleEnabled: true,
+                    child: SizedBox(
+                      width: _canvasSize,
+                      height: _canvasSize,
+                      child: Stack(
+                        key: _canvasKey,
+                        children: [
+                          // Clickable connection lines layer
+                          Positioned.fill(
+                            child: _buildClickableConnections(controller),
                           ),
-                        ),
 
-                      // Nodes
-                      _buildNodes(controller),
-                    ],
-                  ),
-                ),
-              );
-            },
+                          // Temporary drag connection line
+                          if (_dragStartPoint != null && _dragCurrentPoint != null)
+                            Positioned.fill(
+                              child: CustomPaint(
+                                painter: _DragConnectionPainter(
+                                  startPoint: _dragStartPoint!,
+                                  endPoint: _dragCurrentPoint!,
+                                  color: _getDragConnectionColor(),
+                                ),
+                              ),
+                            ),
+
+                          // Nodes
+                          _buildNodes(controller),
+                        ],
+                      ),
+                    ),
+                  );
+                },
+              ),
+
+              // Floating Fit View button
+              Positioned(
+                right: 20,
+                bottom: 280,
+                child: _buildFitViewButton(),
+              ),
+
+              // Reset Zoom button
+              Positioned(
+                right: 20,
+                bottom: 220,
+                child: _buildResetZoomButton(),
+              ),
+
+              // Zoom controls
+              Positioned(
+                right: 20,
+                bottom: 80,
+                child: _buildZoomControls(),
+              ),
+
+              // Parameter sidebar
+              Obx(() {
+                final selectedNode = controller.selectedNode.value;
+                if (selectedNode != null) {
+                  final node = controller.nodes
+                      .firstWhereOrNull((n) => n.id == selectedNode);
+                  if (node != null) {
+                    return Positioned(
+                      right: 0,
+                      top: 0,
+                      bottom: 0,
+                      child: ParameterSidebar(
+                        key: ValueKey(node.id),
+                        node: node,
+                      ),
+                    );
+                  }
+                }
+                return const SizedBox();
+              }),
+            ],
           ),
-
-          // Floating Fit View button
-          Positioned(
-            right: 20,
-            bottom: 280,
-            child: _buildFitViewButton(),
-          ),
-
-          // Reset Zoom button
-          Positioned(
-            right: 20,
-            bottom: 220,
-            child: _buildResetZoomButton(),
-          ),
-
-          // Zoom controls
-          Positioned(
-            right: 20,
-            bottom: 80,
-            child: _buildZoomControls(),
-          ),
-
-          // Parameter sidebar
-          Obx(() {
-            final selectedNode = controller.selectedNode.value;
-            if (selectedNode != null) {
-              final node = controller.nodes
-                  .firstWhereOrNull((n) => n.id == selectedNode);
-              if (node != null) {
-                return Positioned(
-                  right: 0,
-                  top: 0,
-                  bottom: 0,
-                  child: ParameterSidebar(
-                    key: ValueKey(node.id),
-                    node: node,
-                  ),
-                );
-              }
-            }
-            return const SizedBox();
-          }),
-        ],
+        ),
       ),
     );
   }
 
-  Widget _buildConnections(PipelineController controller) {
+  // ─── Keyboard shortcut handler ─────────────────────────────────────────────
+  KeyEventResult _handleKeyEvent(KeyEvent event, PipelineController ctrl) {
+    if (event is! KeyDownEvent) return KeyEventResult.ignored;
+
+    final isCtrl = HardwareKeyboard.instance.isMetaPressed ||
+        HardwareKeyboard.instance.isControlPressed;
+
+    // Ctrl+Z → undo
+    if (isCtrl && event.logicalKey == LogicalKeyboardKey.keyZ &&
+        !HardwareKeyboard.instance.isShiftPressed) {
+      ctrl.undo();
+      return KeyEventResult.handled;
+    }
+
+    // Ctrl+Shift+Z or Ctrl+Y → redo
+    if (isCtrl && (event.logicalKey == LogicalKeyboardKey.keyY ||
+        (event.logicalKey == LogicalKeyboardKey.keyZ &&
+            HardwareKeyboard.instance.isShiftPressed))) {
+      ctrl.redo();
+      return KeyEventResult.handled;
+    }
+
+    // Delete / Backspace → delete selected node
+    if (event.logicalKey == LogicalKeyboardKey.delete ||
+        event.logicalKey == LogicalKeyboardKey.backspace) {
+      if (ctrl.selectedNode.value != null) {
+        ctrl.deleteNode(ctrl.selectedNode.value!);
+        return KeyEventResult.handled;
+      }
+      // Delete hovered connection
+      if (_hoveredConnectionId != null) {
+        ctrl.deleteConnection(_hoveredConnectionId!);
+        setState(() => _hoveredConnectionId = null);
+        return KeyEventResult.handled;
+      }
+    }
+
+    // Escape → deselect
+    if (event.logicalKey == LogicalKeyboardKey.escape) {
+      ctrl.selectNode(null);
+      setState(() => _hoveredConnectionId = null);
+      return KeyEventResult.handled;
+    }
+
+    return KeyEventResult.ignored;
+  }
+
+  /// Builds the connection lines with a GestureDetector overlay for
+  /// click-to-select/delete. Uses path hit-testing via sampling points.
+  Widget _buildClickableConnections(PipelineController controller) {
     return Obx(() {
-      return CustomPaint(
-        painter: ConnectionPainter(
-          nodes: controller.nodes.toList(),
-          connections: controller.connections.toList(),
+      return GestureDetector(
+        behavior: HitTestBehavior.translucent,
+        onTapDown: (details) => _onConnectionLayerTap(details.localPosition, controller),
+        child: CustomPaint(
+          painter: ConnectionPainter(
+            nodes: controller.nodes.toList(),
+            connections: controller.connections.toList(),
+            hoveredConnectionId: _hoveredConnectionId,
+          ),
         ),
       );
     });
+  }
+
+  void _onConnectionLayerTap(Offset tapPos, PipelineController ctrl) {
+    const hitRadius = 12.0;
+    String? hitId;
+
+    for (final conn in ctrl.connections) {
+      final from = ctrl.nodes.firstWhereOrNull((n) => n.id == conn.fromNodeId);
+      final to   = ctrl.nodes.firstWhereOrNull((n) => n.id == conn.toNodeId);
+      if (from == null || to == null) continue;
+
+      final fromPt = Offset(from.position.dx + 180, from.position.dy + 30);
+      final toPt   = Offset(to.position.dx, to.position.dy + 30);
+      final cp1    = Offset(fromPt.dx + (toPt.dx - fromPt.dx) * 0.3, fromPt.dy);
+      final cp2    = Offset(fromPt.dx + (toPt.dx - fromPt.dx) * 0.7, toPt.dy);
+
+      // Sample 30 points along the cubic bezier and check distance to tap
+      for (int i = 0; i <= 30; i++) {
+        final t = i / 30;
+        final mt = 1 - t;
+        final pt = Offset(
+          mt*mt*mt*fromPt.dx + 3*mt*mt*t*cp1.dx + 3*mt*t*t*cp2.dx + t*t*t*toPt.dx,
+          mt*mt*mt*fromPt.dy + 3*mt*mt*t*cp1.dy + 3*mt*t*t*cp2.dy + t*t*t*toPt.dy,
+        );
+        if ((pt - tapPos).distance < hitRadius) {
+          hitId = conn.id;
+          break;
+        }
+      }
+      if (hitId != null) break;
+    }
+
+    if (hitId != null) {
+      setState(() => _hoveredConnectionId = hitId);
+      // Show delete prompt
+      Get.snackbar(
+        'Connection Selected',
+        'Press Delete / Backspace to remove this connection',
+        snackPosition: SnackPosition.BOTTOM,
+        duration: const Duration(seconds: 3),
+        backgroundColor: const Color(0xFF1E293B),
+        colorText: Colors.white,
+        mainButton: TextButton(
+          onPressed: () {
+            ctrl.deleteConnection(hitId!);
+            setState(() => _hoveredConnectionId = null);
+            Get.closeCurrentSnackbar();
+          },
+          child: const Text('DELETE', style: TextStyle(color: Color(0xFFEF4444), fontWeight: FontWeight.bold)),
+        ),
+      );
+    } else {
+      setState(() => _hoveredConnectionId = null);
+    }
   }
 
   Widget _buildNodes(PipelineController controller) {
@@ -319,7 +446,6 @@ class _PipelineCanvasState extends State<PipelineCanvas>
   void startConnectionDrag(String nodeId, bool isOutput, Offset startPoint) {
     setState(() {
       _dragSourceNodeId = nodeId;
-      _isOutputDrag = isOutput;
       _dragStartPoint = startPoint;
       _dragCurrentPoint = startPoint;
     });
@@ -518,9 +644,9 @@ class _DraggableNodeState extends State<_DraggableNode> {
         controller.updateNodePosition(widget.node.id, newPos);
       },
       onPanEnd: (details) {
-        setState(() {
-          _isDragging = false;
-        });
+        setState(() => _isDragging = false);
+        // Write a single undo snapshot on drag-end (fix: was per-pixel before)
+        Get.find<PipelineController>().finalizeNodeDrag(widget.node.id);
       },
       child: MouseRegion(
         cursor: SystemMouseCursors.move,

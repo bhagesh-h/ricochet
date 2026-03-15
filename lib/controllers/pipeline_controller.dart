@@ -1,9 +1,14 @@
 import 'package:get/get.dart';
 import 'package:uuid/uuid.dart';
+import 'package:flutter/material.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../models/pipeline_node.dart';
+import '../models/pipeline_file.dart';
 import '../models/docker_pull_progress.dart';
 import '../services/docker_service.dart';
 import '../services/workspace_service.dart';
+import '../services/docker_compose_export_service.dart';
+import 'pipeline_tabs_controller.dart';
 import 'dart:ui';
 import 'dart:convert';
 import 'dart:io';
@@ -11,10 +16,16 @@ import 'dart:io';
 class PipelineController extends GetxController {
   final DockerService _dockerService = DockerService();
   final WorkspaceService _workspaceService = WorkspaceService();
+  final DockerComposeExportService _exportService = DockerComposeExportService();
 
   var nodes = <PipelineNode>[].obs;
   var connections = <Connection>[].obs;
   var selectedNode = Rxn<String>();
+
+  // Undo/Redo Stacks keyed by tab ID
+  final Map<String, List<String>> _undoStacks = {};
+  final Map<String, List<String>> _redoStacks = {};
+  String? _currentTabId;
 
   @override
   void onInit() {
@@ -22,15 +33,135 @@ class PipelineController extends GetxController {
     // Canvas starts empty - users can drag blocks from sidebar
   }
 
+  void loadPipelineData(PipelineFile tab) {
+    _currentTabId = tab.id;
+    
+    // Create new objects so they are distinct
+    nodes.value = tab.nodes.map((n) => PipelineNode.fromJson(n.toJson())).toList();
+    connections.value = tab.connections.map((c) => Connection.fromJson(c.toJson())).toList();
+    selectedNode.value = null;
+    
+    // Initialize undo stack if empty
+    if (!_undoStacks.containsKey(tab.id)) {
+      _undoStacks[tab.id] = [];
+      _redoStacks[tab.id] = [];
+      _saveHistoryState();
+    }
+  }
+
+  void saveStateToPipelineFile(PipelineFile tab) {
+    tab.nodes = nodes.map((n) => PipelineNode.fromJson(n.toJson())).toList();
+    tab.connections = connections.map((c) => Connection.fromJson(c.toJson())).toList();
+  }
+
+  void _saveHistoryState({bool isUndo = false}) {
+    if (_currentTabId == null) return;
+    final tabId = _currentTabId!;
+
+    final currentState = jsonEncode({
+      'nodes': nodes.map((n) => n.toJson()).toList(),
+      'connections': connections.map((c) => c.toJson()).toList(),
+    });
+
+    final stack = _undoStacks[tabId];
+    if (stack != null) {
+      if (stack.isEmpty || stack.last != currentState) {
+        stack.add(currentState);
+      }
+    }
+    
+    if (!isUndo && _redoStacks.containsKey(tabId)) {
+      _redoStacks[tabId]!.clear();
+    }
+    
+    // Notify TabsController to debounce-save to disk + mark tab dirty
+    Future.microtask(() {
+      if (Get.isRegistered<PipelineTabsController>()) {
+        final tabsCtrl = Get.find<PipelineTabsController>();
+        tabsCtrl.markActiveTabDirty();
+        tabsCtrl.triggerAutoSave();
+      }
+    });
+  }
+
+  void undo() {
+    if (_currentTabId == null) return;
+    final undoStack = _undoStacks[_currentTabId!] ?? [];
+    final redoStack = _redoStacks[_currentTabId!] ?? [];
+    
+    if (undoStack.length > 1) { 
+      redoStack.add(undoStack.removeLast());
+      _loadStateFromJson(undoStack.last);
+    }
+  }
+
+  void redo() {
+    if (_currentTabId == null) return;
+    final undoStack = _undoStacks[_currentTabId!] ?? [];
+    final redoStack = _redoStacks[_currentTabId!] ?? [];
+    
+    if (redoStack.isNotEmpty) {
+      final stateToRestore = redoStack.removeLast();
+      undoStack.add(stateToRestore);
+      _loadStateFromJson(stateToRestore);
+    }
+  }
+
+  void _loadStateFromJson(String jsonString) {
+    try {
+      final data = jsonDecode(jsonString) as Map<String, dynamic>;
+      final nodesList = (data['nodes'] as List).map((n) => PipelineNode.fromJson(n)).toList();
+      final connectionsList = (data['connections'] as List).map((c) => Connection.fromJson(c)).toList();
+      
+      nodes.value = nodesList;
+      connections.value = connectionsList;
+      selectedNode.value = null; 
+    } catch (e) {
+      print('Error loading state from history: $e');
+    }
+  }
+
   void addNode(String nodeType, Offset position) {
     // Check if this is a Docker image (starts with "docker:")
     if (nodeType.startsWith('docker:')) {
-      final imageName = nodeType.substring(7); // Remove "docker:" prefix
-      final node = _createDockerNode(imageName, position);
+      final fullName = nodeType.substring(7); // Remove "docker:" prefix
+      // Fix #10: split image:tag if user typed e.g. python:3.11
+      final colonIdx = fullName.indexOf(':');
+      final imageName = colonIdx >= 0 ? fullName.substring(0, colonIdx) : fullName;
+      final tag = colonIdx >= 0 ? fullName.substring(colonIdx + 1) : 'latest';
+      final node = _createDockerNode(imageName, position, tag: tag);
       nodes.add(node);
     } else {
       final node = _createNodeFromType(nodeType, position);
       nodes.add(node);
+    }
+    _saveHistoryState();
+  }
+
+  /// Duplicate a node — deep copy via JSON, new UUID, offset position. (fix #13)
+  void duplicateNode(String id) {
+    final original = nodes.firstWhereOrNull((n) => n.id == id);
+    if (original == null) return;
+
+    final json = original.toJson();
+    json['id'] = const Uuid().v4();
+    json['title'] = '${original.title} (copy)';
+    // Offset by 30px so it doesn't stack exactly on top
+    final pos = original.position;
+    json['position'] = {'dx': pos.dx + 30, 'dy': pos.dy + 30};
+    // Reset runtime state
+    json['status'] = 'idle';
+    json['logs'] = <String>[];
+    json['downloadProgress'] = 0.0;
+    json['downloadStatus'] = '';
+
+    final copy = PipelineNode.fromJson(json);
+    nodes.add(copy);
+    _saveHistoryState();
+
+    // Pull image for the copy too if it's a Docker node
+    if (copy.dockerImage != null) {
+      _checkAndPullImage(copy);
     }
   }
 
@@ -289,7 +420,7 @@ class PipelineController extends GetxController {
     }
   }
 
-  PipelineNode _createDockerNode(String imageName, Offset position) {
+  PipelineNode _createDockerNode(String imageName, Offset position, {String tag = 'latest'}) {
     final id = const Uuid().v4();
 
     final node = PipelineNode(
@@ -314,8 +445,8 @@ class PipelineController extends GetxController {
           key: 'tag',
           label: 'Image Tag',
           type: ParameterType.text,
-          value: 'latest',
-          placeholder: 'Image tag version',
+          value: tag,
+          placeholder: 'e.g. latest, 3.11, 0.23.4',
         ),
         BlockParameter(
           key: 'command',
@@ -619,6 +750,81 @@ class PipelineController extends GetxController {
         .toList();
   }
 
+  /// Export pipeline as Docker-Compose ZIP
+  Future<void> exportPipelineAsDockerCompose() async {
+    if (nodes.isEmpty) {
+      Get.snackbar(
+        'Export Failed', 
+        'The canvas is empty. Add nodes to export a pipeline.',
+        snackPosition: SnackPosition.BOTTOM,
+        backgroundColor: const Color(0xFFEF4444),
+        colorText: const Color(0xFFFFFFFF),
+      );
+      return;
+    }
+
+    try {
+      // Show progress dialog
+      Get.dialog(
+        const Dialog(
+          child: Padding(
+            padding: EdgeInsets.all(24.0),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                CircularProgressIndicator(),
+                SizedBox(height: 16),
+                Text('Generating Docker-Compose Export...', style: TextStyle(fontWeight: FontWeight.w600)),
+              ],
+            ),
+          ),
+        ),
+        barrierDismissible: false,
+      );
+
+      // Validate cycles and format before generating
+      final sortedNodes = getExecutionOrder();
+
+      // Generate the ZIP
+      final zipBytes = await _exportService.generateExportZip(sortedNodes, connections);
+      
+      final timestamp = DateTime.now().toIso8601String().replaceAll(':', '-').split('.')[0];
+      final filepath = await _workspaceService.saveExportZip(zipBytes, 'bioflow-export_$timestamp.zip');
+
+      // Close dialog
+      Get.back();
+
+      // Show success
+      Get.snackbar(
+        'Export Successful', 
+        'Pipeline exported to $filepath',
+        snackPosition: SnackPosition.BOTTOM,
+        backgroundColor: const Color(0xFF10B981),
+        colorText: const Color(0xFFFFFFFF),
+        mainButton: TextButton(
+          onPressed: () async {
+            final uri = Uri.file(File(filepath).parent.path);
+            if (await canLaunchUrl(uri)) {
+              await launchUrl(uri);
+            }
+          },
+          child: const Text('OPEN', style: TextStyle(color: Colors.white)),
+        )
+      );
+      
+    } catch (e) {
+      Get.back(); // close dialog
+      
+      Get.snackbar(
+        'Export Failed', 
+        e.toString(),
+        snackPosition: SnackPosition.BOTTOM,
+        backgroundColor: const Color(0xFFEF4444),
+        colorText: const Color(0xFFFFFFFF),
+      );
+    }
+  }
+
   /// Opens the output directory in the file explorer
   Future<void> openOutputDirectory() async {
     try {
@@ -645,7 +851,14 @@ class PipelineController extends GetxController {
     final index = nodes.indexWhere((node) => node.id == id);
     if (index != -1) {
       nodes[index].position = newPosition;
-      nodes.refresh();
+      nodes.refresh(); // reactive UI update only — no history save here
+    }
+  }
+
+  /// Called on drag-end only — writes a single undo snapshot and triggers auto-save.
+  void finalizeNodeDrag(String id) {
+    if (nodes.any((n) => n.id == id)) {
+      _saveHistoryState(); // one write per drag, not per pixel
     }
   }
 
@@ -669,7 +882,13 @@ class PipelineController extends GetxController {
         toPort: toPort ?? 'input',
       );
       connections.add(connection);
+      _saveHistoryState();
     }
+  }
+
+  void deleteConnection(String connectionId) {
+    connections.removeWhere((c) => c.id == connectionId);
+    _saveHistoryState();
   }
 
   bool _connectionExists(String fromId, String toId) {
@@ -683,6 +902,7 @@ class PipelineController extends GetxController {
       if (param != null) {
         param.value = value;
         nodes.refresh();
+        _saveHistoryState();
       }
     }
   }
@@ -692,6 +912,7 @@ class PipelineController extends GetxController {
     if (node != null) {
       node.parameters.add(parameter);
       nodes.refresh();
+      _saveHistoryState();
     }
   }
 
@@ -700,6 +921,7 @@ class PipelineController extends GetxController {
     if (node != null && index >= 0 && index < node.parameters.length) {
       node.parameters.removeAt(index);
       nodes.refresh();
+      _saveHistoryState();
     }
   }
 
@@ -712,6 +934,7 @@ class PipelineController extends GetxController {
     if (selectedNode.value == id) {
       selectedNode.value = null;
     }
+    _saveHistoryState();
   }
 
   void clearAll() {
@@ -719,6 +942,7 @@ class PipelineController extends GetxController {
     connections.clear();
     selectedNode.value = null;
     // Don't initialize default blocks - give users a truly blank canvas
+    _saveHistoryState();
   }
 
   void setNodeStatus(String id, BlockStatus status) {

@@ -4,9 +4,13 @@ import 'package:path/path.dart' as path;
 
 /// Service to manage workspace directories for pipeline execution
 class WorkspaceService {
-  static const String _workspaceDirName = 'bioflow_workspace';
+  static const String _workspaceDirName = 'BioFlow';
+  static const String _pipelinesDirName = 'Pipelines';
+  static const String _runsDirName = 'Runs';
 
   Directory? _workspaceDir;
+  Directory? _pipelinesDir;
+  Directory? _runsDir;
   Directory? _currentRunDir;
 
   /// Get or create the main workspace directory
@@ -25,12 +29,56 @@ class WorkspaceService {
     return _workspaceDir!;
   }
 
+  /// Get or create the Pipelines directory
+  Future<Directory> getPipelinesDirectory() async {
+    if (_pipelinesDir != null) return _pipelinesDir!;
+    
+    final workspace = await getWorkspaceDirectory();
+    final pipelinesPath = path.join(workspace.path, _pipelinesDirName);
+    
+    _pipelinesDir = Directory(pipelinesPath);
+    if (!await _pipelinesDir!.exists()) {
+      await _pipelinesDir!.create(recursive: true);
+    }
+    
+    return _pipelinesDir!;
+  }
+
+  /// Get or create the Runs directory
+  Future<Directory> getRunsDirectory() async {
+    if (_runsDir != null) return _runsDir!;
+    
+    final workspace = await getWorkspaceDirectory();
+    final runsPath = path.join(workspace.path, _runsDirName);
+    
+    _runsDir = Directory(runsPath);
+    if (!await _runsDir!.exists()) {
+      await _runsDir!.create(recursive: true);
+    }
+    
+    return _runsDir!;
+  }
+  
+  /// Create a new dedicated directory for a pipeline project
+  Future<String> createPipelineFolder(String pipelineName) async {
+    final pipelinesDir = await getPipelinesDirectory();
+    final sanitizedName = pipelineName.replaceAll(RegExp(r'[^a-zA-Z0-9_\s-]'), '_').trim();
+    final folderPath = path.join(pipelinesDir.path, sanitizedName);
+    
+    final dir = Directory(folderPath);
+    if (!await dir.exists()) {
+      await dir.create(recursive: true);
+    }
+    
+    return dir.path;
+  }
+
   /// Create a new run directory for this execution
   Future<Directory> createRunDirectory() async {
-    final workspace = await getWorkspaceDirectory();
+    final runsDir = await getRunsDirectory();
     final timestamp =
         DateTime.now().toIso8601String().replaceAll(':', '-').split('.')[0];
-    final runDirPath = path.join(workspace.path, 'run_$timestamp');
+    final runDirPath = path.join(runsDir.path, 'run_$timestamp');
 
     _currentRunDir = Directory(runDirPath);
     await _currentRunDir!.create(recursive: true);
@@ -71,8 +119,8 @@ class WorkspaceService {
 
   /// List all run directories
   Future<List<Directory>> listRunDirectories() async {
-    final workspace = await getWorkspaceDirectory();
-    final entities = await workspace.list().toList();
+    final runsDir = await getRunsDirectory();
+    final entities = await runsDir.list().toList();
 
     return entities
         .whereType<Directory>()
@@ -107,4 +155,49 @@ class WorkspaceService {
     if (_currentRunDir == null) return null;
     return _currentRunDir!.path;
   }
+
+  /// Save an exported zip byte array to the exports folder
+  Future<String> saveExportZip(List<int> zipBytes, String filename) async {
+    final workspace = await getWorkspaceDirectory();
+    final exportsDirPath = path.join(workspace.path, 'exports');
+    
+    final exportsDir = Directory(exportsDirPath);
+    if (!await exportsDir.exists()) {
+      await exportsDir.create(recursive: true);
+    }
+
+    final filePath = path.join(exportsDir.path, filename);
+    final file = File(filePath);
+    await file.writeAsBytes(zipBytes);
+    
+    print('📦 Export saved to: $filePath');
+    return filePath;
+  }
+
+  /// List all pipeline folders that contain a pipeline.json (Open Recent)
+  Future<List<Map<String, String>>> listRecentPipelines() async {
+    final pipelinesDir = await getPipelinesDirectory();
+    final entities = await pipelinesDir.list().toList();
+    final result = <Map<String, String>>[];
+
+    for (final entity in entities.whereType<Directory>()) {
+      final jsonFile = File(path.join(entity.path, 'pipeline.json'));
+      if (await jsonFile.exists()) {
+        result.add({
+          'name': path.basename(entity.path),
+          'folderPath': entity.path,
+        });
+      }
+    }
+    return result;
+  }
+
+  /// Import a pipeline from a selected folder path.
+  /// Returns the folderPath if valid (contains pipeline.json), null otherwise.
+  Future<String?> importPipelineFromFolder(String folderPath) async {
+    final jsonFile = File(path.join(folderPath, 'pipeline.json'));
+    if (!await jsonFile.exists()) return null;
+    return folderPath;
+  }
 }
+

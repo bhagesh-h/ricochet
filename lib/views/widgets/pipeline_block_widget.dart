@@ -79,13 +79,66 @@ class _PipelineBlockWidgetState extends State<PipelineBlockWidget>
                 onTap: () {
                   controller.selectNode(isSelected ? null : widget.node.id);
                 },
-                child: Stack(
-                  clipBehavior: Clip.none,
+                // Right-click / long-press → context menu
+                onSecondaryTap: () => _showContextMenu(context, controller),
+                onLongPress: () => _showContextMenu(context, controller),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
                   children: [
-                    // Main block
-                    _buildMainBlock(isSelected),
-                    // Connection dots
-                    _buildConnectionDots(),
+                    Stack(
+                      clipBehavior: Clip.none,
+                      children: [
+                        // Main block
+                        _buildMainBlock(isSelected),
+                        // Connection dots
+                        _buildConnectionDots(),
+                      ],
+                    ),
+                    // Fix #7: Pull progress bar below the block when downloading
+                    GetBuilder<PipelineController>(
+                      id: widget.node.id,
+                      builder: (_) {
+                        if (widget.node.status != BlockStatus.downloading) {
+                          return const SizedBox.shrink();
+                        }
+                        return Container(
+                          width: 180,
+                          margin: const EdgeInsets.only(top: 4),
+                          padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF0F172A).withValues(alpha: 0.85),
+                            borderRadius: BorderRadius.circular(6),
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                widget.node.downloadStatus ?? '',
+                                style: const TextStyle(
+                                  fontSize: 9,
+                                  color: Color(0xFF94A3B8),
+                                ),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                              const SizedBox(height: 2),
+                              ClipRRect(
+                                borderRadius: BorderRadius.circular(4),
+                                child: LinearProgressIndicator(
+                                  value: widget.node.downloadProgress > 0
+                                      ? widget.node.downloadProgress
+                                      : null,
+                                  minHeight: 4,
+                                  backgroundColor: const Color(0xFF1E293B),
+                                  valueColor: AlwaysStoppedAnimation(
+                                      widget.node.primaryColor),
+                                ),
+                              ),
+                            ],
+                          ),
+                        );
+                      },
+                    ),
                   ],
                 ),
               ),
@@ -93,6 +146,28 @@ class _PipelineBlockWidgetState extends State<PipelineBlockWidget>
           );
         },
       );
+    });
+  }
+
+  void _showContextMenu(BuildContext context, PipelineController ctrl) {
+    final nodeId = widget.node.id;
+    showMenu<String>(
+      context: context,
+      position: RelativeRect.fromLTRB(100, 100, 100, 100),
+      items: [
+        const PopupMenuItem(value: 'duplicate', child: Row(
+          children: [Icon(Icons.copy_rounded, size: 16), SizedBox(width: 8), Text('Duplicate Node')],
+        )),
+        const PopupMenuItem(value: 'delete', child: Row(
+          children: [Icon(Icons.delete_outline_rounded, size: 16, color: Color(0xFFEF4444)), SizedBox(width: 8), Text('Delete Node', style: TextStyle(color: Color(0xFFEF4444)))],
+        )),
+      ],
+    ).then((value) {
+      if (value == 'duplicate') {
+        ctrl.duplicateNode(nodeId);
+      } else if (value == 'delete') {
+        ctrl.deleteNode(nodeId);
+      }
     });
   }
 

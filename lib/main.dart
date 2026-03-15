@@ -1,13 +1,16 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
+import 'package:file_picker/file_picker.dart';
 import 'package:bioflow/controllers/docker_search_controller.dart';
 import 'controllers/pipeline_controller.dart';
 import 'controllers/execution_controller.dart';
 import 'controllers/docker_controller.dart';
+import 'controllers/pipeline_tabs_controller.dart';
 import 'views/pipeline_canvas.dart';
 import 'views/tool_sidebar.dart';
 import 'views/widgets/execution_panel.dart';
 import 'views/widgets/docker_status_banner.dart';
+import 'views/widgets/pipeline_tab_bar.dart';
 
 void main() {
   // Initialize controllers before runApp
@@ -15,7 +18,9 @@ void main() {
   Get.put(PipelineController());
   Get.put(ExecutionController());
   Get.put(DockerSearchController());
-  Get.put(DockerController()); // Docker detection and health checks
+  Get.put(DockerController());
+  // PipelineTabsController must come AFTER PipelineController & ExecutionController
+  Get.put(PipelineTabsController());
 
   runApp(const MyApp());
 }
@@ -68,6 +73,65 @@ class MyApp extends StatelessWidget {
             ],
           ),
           actions: [
+            // Open Recent
+            Container(
+              margin: const EdgeInsets.only(right: 8),
+              child: TextButton.icon(
+                onPressed: () => Get.find<PipelineTabsController>().showOpenRecentDialog(),
+                icon: const Icon(Icons.history, size: 18, color: Color(0xFF64748B)),
+                label: const Text('Open Recent',
+                    style: TextStyle(color: Color(0xFF475569), fontWeight: FontWeight.w600)),
+                style: TextButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12)),
+              ),
+            ),
+            // Import Pipeline button
+            Container(
+              margin: const EdgeInsets.only(right: 8),
+              decoration: BoxDecoration(
+                color: const Color(0xFFF1F5F9),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: const Color(0xFFE2E8F0)),
+              ),
+              child: TextButton.icon(
+                onPressed: () async {
+                  final result = await FilePicker.platform.getDirectoryPath(
+                    dialogTitle: 'Select Pipeline Folder',
+                  );
+                  if (result != null) {
+                    Get.find<PipelineTabsController>().importPipeline(result);
+                  }
+                },
+                icon: const Icon(Icons.folder_open, size: 18, color: Color(0xFF64748B)),
+                label: const Text('Import',
+                    style: TextStyle(color: Color(0xFF475569), fontWeight: FontWeight.w600)),
+                style: TextButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12)),
+              ),
+            ),
+            // Export button
+            Container(
+              margin: const EdgeInsets.only(right: 12),
+              decoration: BoxDecoration(
+                color: const Color(0xFFF1F5F9),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: const Color(0xFFE2E8F0)),
+              ),
+              child: TextButton.icon(
+                onPressed: () => Get.find<PipelineController>().exportPipelineAsDockerCompose(),
+                icon: const Icon(Icons.download, size: 18, color: Color(0xFF64748B)),
+                label: const Text(
+                  'Export Docker',
+                  style: TextStyle(
+                    color: Color(0xFF475569),
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                style: TextButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                ),
+              ),
+            ),
             Obx(() {
               final isDockerReady = dockerCtrl.isReady;
               return Tooltip(
@@ -132,6 +196,8 @@ class MyApp extends StatelessWidget {
               children: [
                 // Docker status banner
                 const DockerStatusBanner(),
+                // Chrome-style Multi-Tab Bar
+                const PipelineTabBar(),
                 // Main content
                 Expanded(
                   child: Row(

@@ -9,33 +9,172 @@ class ExecutionController extends GetxController {
   final showPanel = false.obs;
   final panelHeight = 250.0.obs;
 
+  final Map<String, List<String>> _logsByTab = {};
+  final Map<String, bool> _isRunningByTab = {};
+  String? _currentTabId;
+
+  void clearLogsAndSwitchToActiveTab(String? tabId) {
+    if (tabId == null) return;
+    
+    if (_currentTabId != null) {
+      _logsByTab[_currentTabId!] = List.from(log);
+      _isRunningByTab[_currentTabId!] = isRunning.value;
+    }
+    
+    _currentTabId = tabId;
+    log.clear();
+    
+    if (_logsByTab.containsKey(tabId)) {
+      log.addAll(_logsByTab[tabId]!);
+    }
+    isRunning.value = _isRunningByTab[tabId] ?? false;
+  }
+
+  void _addLog(String tabId, String message) {
+    if (!_logsByTab.containsKey(tabId)) {
+      _logsByTab[tabId] = [];
+    }
+    _logsByTab[tabId]!.add(message);
+    
+    if (_currentTabId == tabId) {
+      log.add(message);
+    }
+  }
+
+  void _setRunning(String tabId, bool running) {
+    _isRunningByTab[tabId] = running;
+    if (_currentTabId == tabId) {
+      isRunning.value = running;
+    }
+  }
+
   void setPanelHeight(double height) {
     // Clamp height between min and max values
     panelHeight.value = height.clamp(100.0, 600.0);
   }
 
-  void runPipeline() async {
-    if (isRunning.value) return;
+  /// Validates the pipeline before execution.
+  /// Returns a list of human-readable issues. Empty list = valid.
+  List<String> validatePipeline() {
+    final pipelineCtrl = Get.find<PipelineController>();
+    final errors = <String>[];
 
-    log.clear();
-    isRunning.value = true;
+    // 1. Empty canvas
+    if (pipelineCtrl.nodes.isEmpty) {
+      errors.add('🚫 Canvas is empty. Add at least one node before executing.');
+      return errors; // No point checking further
+    }
+
+    // 2. Docker nodes with no command set
+    for (final node in pipelineCtrl.nodes) {
+      if (node.dockerImage != null) {
+        final commandParam = node.parameters
+            .firstWhereOrNull((p) => p.key == 'command');
+        final command = commandParam?.value?.toString().trim() ?? '';
+        if (command.isEmpty) {
+          errors.add('⚠️ Node "${node.title}": Command field is empty.');
+        }
+        // Check image still set
+        final imageParam = node.parameters
+            .firstWhereOrNull((p) => p.key == 'image');
+        final image = imageParam?.value?.toString().trim() ?? '';
+        if (image.isEmpty) {
+          errors.add('⚠️ Node "${node.title}": Docker Image field is empty.');
+        }
+      }
+    }
+
+    // 3. Disconnected nodes (only flag in multi-node pipeline)
+    if (pipelineCtrl.nodes.length > 1) {
+      for (final node in pipelineCtrl.nodes) {
+        final hasAnyConnection = pipelineCtrl.connections.any(
+          (c) => c.fromNodeId == node.id || c.toNodeId == node.id,
+        );
+        if (!hasAnyConnection) {
+          errors.add('🔗 Node "${node.title}" is not connected to any other node.');
+        }
+      }
+    }
+
+    return errors;
+  }
+
+  void runPipeline() async {
+    final tabId = _currentTabId;
+    if (tabId == null) return;
+
+    if (_isRunningByTab[tabId] == true) return;
+
+    // --- Validate before running ---
+    final errors = validatePipeline();
+    if (errors.isNotEmpty) {
+      Get.dialog(
+        AlertDialog(
+          title: Row(
+            children: const [
+              Icon(Icons.warning_amber_rounded, color: Color(0xFFF59E0B)),
+              SizedBox(width: 8),
+              Text('Pipeline Issues Found'),
+            ],
+          ),
+          content: SingleChildScrollView(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Text(
+                  'Please fix these issues before executing:',
+                  style: TextStyle(fontWeight: FontWeight.w600),
+                ),
+                const SizedBox(height: 12),
+                ...errors.map((e) => Padding(
+                  padding: const EdgeInsets.only(bottom: 8),
+                  child: Text(e, style: const TextStyle(fontSize: 13)),
+                )),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Get.back(),
+              child: const Text('Fix Issues'),
+            ),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFF59E0B)),
+              onPressed: () { Get.back(); _doRunPipeline(tabId); },
+              child: const Text('Run Anyway', style: TextStyle(color: Colors.white)),
+            ),
+          ],
+        ),
+      );
+      return;
+    }
+
+    _doRunPipeline(tabId);
+  }
+
+  void _doRunPipeline(String tabId) async {
+    if (_currentTabId == tabId) log.clear();
+    _logsByTab[tabId] = [];
+    
+    _setRunning(tabId, true);
     showPanel.value = true; // Show panel when running
     final pipelineCtrl = Get.find<PipelineController>();
 
-    log.add('🚀 Pipeline execution started');
-    log.add('📊 Found ${pipelineCtrl.nodes.length} blocks');
-    log.add('🔗 Found ${pipelineCtrl.connections.length} connections');
-    log.add('');
+    _addLog(tabId, '🚀 Pipeline execution started');
+    _addLog(tabId, '📊 Found ${pipelineCtrl.nodes.length} blocks');
+    _addLog(tabId, '🔗 Found ${pipelineCtrl.connections.length} connections');
+    _addLog(tabId, '');
 
     // 1. Determine execution order (Topological Sort)
     List<PipelineNode> executionOrder;
     try {
       executionOrder = pipelineCtrl.getExecutionOrder();
-      log.add(
+      _addLog(tabId,
           '📋 Execution order determined: ${executionOrder.map((n) => n.title).join(' -> ')}');
     } catch (e) {
-      log.add('❌ Pipeline execution failed');
-      log.add('🚨 Error: ${e.toString().replaceAll('Exception: ', '')}');
+      _addLog(tabId, '❌ Pipeline execution failed');
+      _addLog(tabId, '🚨 Error: ${e.toString().replaceAll('Exception: ', '')}');
 
       // Show error dialog
       Get.dialog(
@@ -51,11 +190,11 @@ class ExecutionController extends GetxController {
         ),
       );
 
-      isRunning.value = false;
+      _setRunning(tabId, false);
       return;
     }
 
-    log.add('');
+    _addLog(tabId, '');
 
     // Map to store output file paths: nodeId -> filePath
     final nodeOutputs = <String, String>{};
@@ -64,12 +203,12 @@ class ExecutionController extends GetxController {
     for (var node in executionOrder) {
       pipelineCtrl.setNodeStatus(node.id, BlockStatus.running);
 
-      log.add('⚡ Executing: ${node.title}');
-      log.add('   📂 Category: ${node.category.name}');
+      _addLog(tabId, '⚡ Executing: ${node.title}');
+      _addLog(tabId, '   📂 Category: ${node.category.name}');
 
       for (var param in node.parameters) {
         if (param.value != null && param.value.toString().isNotEmpty) {
-          log.add('   ⚙️ ${param.label}: ${param.value}');
+          _addLog(tabId, '   ⚙️ ${param.label}: ${param.value}');
         }
       }
 
@@ -87,7 +226,7 @@ class ExecutionController extends GetxController {
               ? connection.toPort
               : 'input_${upstreamNodeId.substring(0, 4)}';
           inputFiles[key] = nodeOutputs[upstreamNodeId]!;
-          log.add(
+          _addLog(tabId,
               '   📥 Input from ${pipelineCtrl.nodes.firstWhere((n) => n.id == upstreamNodeId).title}');
         }
       }
@@ -97,7 +236,7 @@ class ExecutionController extends GetxController {
 
       // Check status after execution
       if (node.status == BlockStatus.success) {
-        log.add('   ✅ Completed successfully');
+        _addLog(tabId, '   ✅ Completed successfully');
 
         // Get real output file path
         final outputParam = node.parameters.firstWhereOrNull(
@@ -106,49 +245,71 @@ class ExecutionController extends GetxController {
 
         if (outputParam?.value != null) {
           final path = outputParam!.value.toString();
-          log.add('   📁 Output: $path');
+          _addLog(tabId, '   📁 Output: $path');
 
           // Store output for downstream nodes
           nodeOutputs[node.id] = path;
         }
       } else {
-        log.add('   ❌ Execution failed');
+        _addLog(tabId, '   ❌ Execution failed');
         // Add last few lines of error logs if available
         final errorLogs = node.logs
             .where((l) => l.contains('STDERR') || l.contains('Error'))
             .take(3);
         for (final err in errorLogs) {
-          log.add('   $err');
+          _addLog(tabId, '   $err');
         }
 
         // Stop pipeline on failure
-        log.add('');
-        log.add(
+        _addLog(tabId, '');
+        _addLog(tabId,
             '⚠️ Pipeline execution stopped due to failure in ${node.title}');
-        isRunning.value = false;
+        _setRunning(tabId, false);
         return;
       }
 
-      log.add('');
+      _addLog(tabId, '');
     }
 
     final allSuccess =
         pipelineCtrl.nodes.every((n) => n.status == BlockStatus.success);
     if (allSuccess) {
-      log.add('🎉 Pipeline completed successfully!');
-      log.add('📈 All blocks executed without errors');
+      _addLog(tabId, '🎉 Pipeline completed successfully!');
+      _addLog(tabId, '📈 All blocks executed without errors');
     } else {
-      log.add('⚠️ Pipeline execution stopped due to errors');
+      _addLog(tabId, '⚠️ Pipeline execution stopped due to errors');
     }
 
-    isRunning.value = false;
+    _setRunning(tabId, false);
   }
 
   void clearLog() {
+    if (_currentTabId != null) {
+      _logsByTab[_currentTabId!] = [];
+    }
     log.clear();
   }
 
   void togglePanel() {
     showPanel.value = !showPanel.value;
+  }
+
+  /// Stop all running containers for the current tab (fix #6)
+  void stopPipeline() {
+    final tabId = _currentTabId;
+    if (tabId == null) return;
+    if (_isRunningByTab[tabId] != true) return;
+
+    _addLog(tabId, '🛑 Stop requested by user...');
+
+    final pipelineCtrl = Get.find<PipelineController>();
+    for (final node in pipelineCtrl.nodes) {
+      if (node.status == BlockStatus.running) {
+        pipelineCtrl.stopNode(node.id);
+      }
+    }
+
+    _addLog(tabId, '⚠️ Pipeline was stopped by user.');
+    _setRunning(tabId, false);
   }
 }

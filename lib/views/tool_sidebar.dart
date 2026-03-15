@@ -17,7 +17,158 @@ class _ToolSidebarState extends State<ToolSidebar> {
   final TextEditingController _searchTextController = TextEditingController();
   final FocusNode _searchFocusNode = FocusNode();
 
+  // Bioinformatics tool library — fix #11
   final List<Map<String, dynamic>> tools = const [
+    // ── Quality Control ────────────────────────────────────────────────────
+    {
+      'name': 'FastQC',
+      'category': 'Quality Control',
+      'description': 'Quality control for raw sequencing reads',
+      'icon': Icons.bar_chart_rounded,
+      'color': Color(0xFF10B981),
+      'bgColor': Color(0xFFF0FDF4),
+      'dockerId': 'docker:biocontainers/fastqc',
+    },
+    {
+      'name': 'MultiQC',
+      'category': 'Quality Control',
+      'description': 'Aggregate QC results across samples',
+      'icon': Icons.assessment_rounded,
+      'color': Color(0xFF10B981),
+      'bgColor': Color(0xFFF0FDF4),
+      'dockerId': 'docker:ewels/multiqc',
+    },
+    {
+      'name': 'Fastp',
+      'category': 'Quality Control',
+      'description': 'Fast FASTQ preprocessing & QC',
+      'icon': Icons.speed_rounded,
+      'color': Color(0xFF10B981),
+      'bgColor': Color(0xFFF0FDF4),
+      'dockerId': 'docker:biocontainers/fastp',
+    },
+    {
+      'name': 'Trimmomatic',
+      'category': 'Quality Control',
+      'description': 'Trim adapters from Illumina reads',
+      'icon': Icons.content_cut_rounded,
+      'color': Color(0xFF10B981),
+      'bgColor': Color(0xFFF0FDF4),
+      'dockerId': 'docker:staphb/trimmomatic',
+    },
+    // ── Alignment ─────────────────────────────────────────────────────────
+    {
+      'name': 'BWA',
+      'category': 'Alignment',
+      'description': 'Burrows-Wheeler DNA aligner',
+      'icon': Icons.align_horizontal_left_rounded,
+      'color': Color(0xFF6366F1),
+      'bgColor': Color(0xFFF0F9FF),
+      'dockerId': 'docker:biocontainers/bwa',
+    },
+    {
+      'name': 'HISAT2',
+      'category': 'Alignment',
+      'description': 'Graph-based alignment of RNA-seq reads',
+      'icon': Icons.account_tree_rounded,
+      'color': Color(0xFF6366F1),
+      'bgColor': Color(0xFFF0F9FF),
+      'dockerId': 'docker:staphb/hisat2',
+    },
+    {
+      'name': 'STAR',
+      'category': 'Alignment',
+      'description': 'RNA-seq alignment, splice-aware',
+      'icon': Icons.star_rounded,
+      'color': Color(0xFF6366F1),
+      'bgColor': Color(0xFFF0F9FF),
+      'dockerId': 'docker:mgibio/star',
+    },
+    {
+      'name': 'Bowtie2',
+      'category': 'Alignment',
+      'description': 'Short read aligner for DNA/RNA',
+      'icon': Icons.swap_horiz_rounded,
+      'color': Color(0xFF6366F1),
+      'bgColor': Color(0xFFF0F9FF),
+      'dockerId': 'docker:biocontainers/bowtie2',
+    },
+    // ── SAM/BAM Tools ─────────────────────────────────────────────────────
+    {
+      'name': 'Samtools',
+      'category': 'SAM/BAM',
+      'description': 'Sort, index, filter BAM/SAM files',
+      'icon': Icons.table_rows_rounded,
+      'color': Color(0xFFF59E0B),
+      'bgColor': Color(0xFFFFFBEB),
+      'dockerId': 'docker:staphb/samtools',
+    },
+    {
+      'name': 'Picard',
+      'category': 'SAM/BAM',
+      'description': 'Mark duplicates, collect metrics',
+      'icon': Icons.filter_alt_rounded,
+      'color': Color(0xFFF59E0B),
+      'bgColor': Color(0xFFFFFBEB),
+      'dockerId': 'docker:broadinstitute/picard',
+    },
+    // ── Variant Calling ───────────────────────────────────────────────────
+    {
+      'name': 'GATK',
+      'category': 'Variant Calling',
+      'description': 'HaplotypeCaller, BaseRecalibrator',
+      'icon': Icons.biotech_rounded,
+      'color': Color(0xFFEF4444),
+      'bgColor': Color(0xFFFEF2F2),
+      'dockerId': 'docker:broadinstitute/gatk',
+    },
+    {
+      'name': 'FreeBayes',
+      'category': 'Variant Calling',
+      'description': 'Bayesian genetic variant detector',
+      'icon': Icons.scatter_plot_rounded,
+      'color': Color(0xFFEF4444),
+      'bgColor': Color(0xFFFEF2F2),
+      'dockerId': 'docker:biocontainers/freebayes',
+    },
+    {
+      'name': 'bcftools',
+      'category': 'Variant Calling',
+      'description': 'VCF/BCF variant manipulation',
+      'icon': Icons.data_array_rounded,
+      'color': Color(0xFFEF4444),
+      'bgColor': Color(0xFFFEF2F2),
+      'dockerId': 'docker:biocontainers/bcftools',
+    },
+    // ── RNA-Seq ───────────────────────────────────────────────────────────
+    {
+      'name': 'featureCounts',
+      'category': 'RNA-Seq',
+      'description': 'Count reads over genomic features',
+      'icon': Icons.calculate_rounded,
+      'color': Color(0xFF8B5CF6),
+      'bgColor': Color(0xFFF5F3FF),
+      'dockerId': 'docker:biocontainers/subread',
+    },
+    {
+      'name': 'DESeq2',
+      'category': 'RNA-Seq',
+      'description': 'Differential expression with R/Bioconductor',
+      'icon': Icons.trending_up_rounded,
+      'color': Color(0xFF8B5CF6),
+      'bgColor': Color(0xFFF5F3FF),
+      'dockerId': 'docker:bioconductor/bioconductor_docker',
+    },
+    {
+      'name': 'Salmon',
+      'category': 'RNA-Seq',
+      'description': 'Fast transcript quantification',
+      'icon': Icons.flash_on_rounded,
+      'color': Color(0xFF8B5CF6),
+      'bgColor': Color(0xFFF5F3FF),
+      'dockerId': 'docker:combinelab/salmon',
+    },
+    // ── I/O Utilities ─────────────────────────────────────────────────────
     {
       'name': 'Input',
       'category': 'IO',
@@ -25,6 +176,7 @@ class _ToolSidebarState extends State<ToolSidebar> {
       'icon': Icons.input_rounded,
       'color': Color(0xFF3B82F6),
       'bgColor': Color(0xFFEFF6FF),
+      'dockerId': null,
     },
     {
       'name': 'Output',
@@ -33,6 +185,7 @@ class _ToolSidebarState extends State<ToolSidebar> {
       'icon': Icons.output_rounded,
       'color': Color(0xFF3B82F6),
       'bgColor': Color(0xFFEFF6FF),
+      'dockerId': null,
     },
   ];
 
@@ -262,15 +415,35 @@ class _ToolSidebarState extends State<ToolSidebar> {
   }
 
   Widget _buildBuiltInTools() {
-    return ListView.builder(
-      padding: const EdgeInsets.all(16),
-      itemCount: tools.length,
-      itemBuilder: (context, index) {
-        final tool = tools[index];
-        return Container(
-          margin: const EdgeInsets.only(bottom: 12),
+    // Group tools by category
+    final Map<String, List<Map<String, dynamic>>> grouped = {};
+    for (final tool in tools) {
+      final cat = tool['category'] as String;
+      grouped.putIfAbsent(cat, () => []).add(tool);
+    }
+
+    final items = <Widget>[];
+    grouped.forEach((category, catTools) {
+      // Category header
+      items.add(Padding(
+        padding: const EdgeInsets.fromLTRB(4, 16, 4, 8),
+        child: Text(
+          category.toUpperCase(),
+          style: const TextStyle(
+            fontSize: 10,
+            fontWeight: FontWeight.w700,
+            color: Color(0xFF94A3B8),
+            letterSpacing: 1.2,
+          ),
+        ),
+      ));
+      for (final tool in catTools) {
+        // Use dockerId as drag data for Docker-based tools, tool name for builtins
+        final dragData = (tool['dockerId'] as String?) ?? (tool['name'] as String);
+        items.add(Container(
+          margin: const EdgeInsets.only(bottom: 8),
           child: Draggable<String>(
-            data: tool['name'],
+            data: dragData,
             feedback: Material(
               elevation: 12,
               borderRadius: BorderRadius.circular(16),
@@ -279,8 +452,13 @@ class _ToolSidebarState extends State<ToolSidebar> {
             childWhenDragging: _buildToolCard(tool, isGhost: true),
             child: _buildToolCard(tool),
           ),
-        );
-      },
+        ));
+      }
+    });
+
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+      children: items,
     );
   }
 

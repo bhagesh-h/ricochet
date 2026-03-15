@@ -1,6 +1,39 @@
 import 'dart:ui';
-
 import 'package:flutter/material.dart';
+import 'package:json_annotation/json_annotation.dart';
+
+part 'pipeline_node.g.dart';
+
+class OffsetConverter implements JsonConverter<Offset, Map<String, dynamic>> {
+  const OffsetConverter();
+
+  @override
+  Offset fromJson(Map<String, dynamic> json) {
+    return Offset((json['dx'] as num).toDouble(), (json['dy'] as num).toDouble());
+  }
+
+  @override
+  Map<String, dynamic> toJson(Offset object) {
+    return {'dx': object.dx, 'dy': object.dy};
+  }
+}
+
+class NullableOffsetConverter implements JsonConverter<Offset?, Map<String, dynamic>?> {
+  const NullableOffsetConverter();
+
+  @override
+  Offset? fromJson(Map<String, dynamic>? json) {
+    if (json == null) return null;
+    return Offset((json['dx'] as num).toDouble(), (json['dy'] as num).toDouble());
+  }
+
+  @override
+  Map<String, dynamic>? toJson(Offset? object) {
+    if (object == null) return null;
+    return {'dx': object.dx, 'dy': object.dy};
+  }
+}
+
 
 enum BlockCategory { input, output, processing, analysis, visualization }
 
@@ -15,6 +48,8 @@ enum BlockStatus {
   failed, // Execution failed
   error, // Configuration or download error
 }
+
+@JsonSerializable(explicitToJson: true)
 
 class BlockParameter {
   final String id;
@@ -36,28 +71,53 @@ class BlockParameter {
     this.placeholder,
     this.required = false,
   }) : id = id ?? DateTime.now().millisecondsSinceEpoch.toString();
+
+  factory BlockParameter.fromJson(Map<String, dynamic> json) => _$BlockParameterFromJson(json);
+  Map<String, dynamic> toJson() => _$BlockParameterToJson(this);
 }
 
 enum ParameterType { text, dropdown, toggle, file, numeric }
+
+@JsonSerializable(explicitToJson: true)
 
 class PipelineNode {
   final String id;
   final String title;
   final String description;
+  @OffsetConverter()
   Offset position;
   final BlockCategory category;
   final List<BlockParameter> parameters;
+  
+  @JsonKey(includeFromJson: false, includeToJson: false)
   BlockStatus status;
+  
   final List<String> inputPorts;
   final List<String> outputPorts;
+  
+  @JsonKey(includeFromJson: false, includeToJson: false)
   bool isSelected;
+  
   final String iconCodePoint;
 
   // Docker image tracking
-  String? dockerImage; // e.g., "biocontainers/fastqc:latest"
-  double downloadProgress = 0.0; // 0.0 - 1.0
-  String? downloadStatus; // "Downloading layer 3/5"
-  bool isImageLocal = false; // Is image cached locally?
+  String? dockerImage; 
+  
+  @JsonKey(includeFromJson: false, includeToJson: false)
+  double downloadProgress;
+  
+  @JsonKey(includeFromJson: false, includeToJson: false)
+  String? downloadStatus;
+  
+  @JsonKey(includeFromJson: false, includeToJson: false)
+  bool isImageLocal;
+  
+  // Export Settings
+  String? outputFileName;
+  bool isAggregator;
+
+  @JsonKey(includeFromJson: false, includeToJson: false)
+  final List<String> logs;
 
   PipelineNode({
     required this.id,
@@ -75,11 +135,13 @@ class PipelineNode {
     this.downloadProgress = 0.0,
     this.downloadStatus,
     this.isImageLocal = false,
+    this.outputFileName,
+    this.isAggregator = false,
     List<String>? logs,
   }) : logs = logs ?? [];
 
-  // Execution logs
-  final List<String> logs;
+  factory PipelineNode.fromJson(Map<String, dynamic> json) => _$PipelineNodeFromJson(json);
+  Map<String, dynamic> toJson() => _$PipelineNodeToJson(this);
 
   Color get primaryColor {
     switch (category) {
@@ -127,13 +189,18 @@ class PipelineNode {
   }
 }
 
+@JsonSerializable(explicitToJson: true)
 class Connection {
   final String id;
   final String fromNodeId;
   final String toNodeId;
   final String fromPort;
   final String toPort;
+  
+  @NullableOffsetConverter()
   final Offset? fromPoint;
+  
+  @NullableOffsetConverter()
   final Offset? toPoint;
 
   Connection({
@@ -145,6 +212,9 @@ class Connection {
     this.fromPoint,
     this.toPoint,
   });
+
+  factory Connection.fromJson(Map<String, dynamic> json) => _$ConnectionFromJson(json);
+  Map<String, dynamic> toJson() => _$ConnectionToJson(this);
 }
 
 // Extension for legacy compatibility
