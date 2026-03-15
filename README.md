@@ -1,3 +1,4 @@
+<img src="assets/logo-nobg.png" width="100">
 # BioFlow — Visual Bioinformatics Pipeline Designer
 
 <div align="center">
@@ -12,7 +13,6 @@
 
 </div>
 
----
 
 ## 📋 Table of Contents
 
@@ -30,7 +30,6 @@
 - [macOS Docker Setup](#-macos-docker-connectivity--setup-guide)
 - [Contributing](#-contributing)
 
----
 
 ## 🧬 What is BioFlow?
 
@@ -41,7 +40,7 @@ Think of it as **"Figma for bioinformatics pipelines"**: connect tools like Fast
 ### Why BioFlow?
 
 | Pain Point | BioFlow Solution |
-|-----------|-----------------|
+----|
 | Complex CLI tools | Visual drag-and-drop interface |
 | "It works on my machine" | Docker containers = consistent environments |
 | Conda/Python version hell | Each tool runs in its own container |
@@ -49,7 +48,6 @@ Think of it as **"Figma for bioinformatics pipelines"**: connect tools like Fast
 | Galaxy is slow (web-only) | Runs locally on your desktop — fast & private |
 | Nextflow requires coding | No code needed — just connect nodes |
 
----
 
 ## 👥 Who is it for?
 
@@ -59,7 +57,6 @@ Think of it as **"Figma for bioinformatics pipelines"**: connect tools like Fast
 - **Pharma/biotech scientists** running analysis without IT support
 - **Bioinformatics educators** teaching pipeline concepts without CLI struggle
 
----
 
 ## ✨ Features
 
@@ -114,7 +111,6 @@ Think of it as **"Figma for bioinformatics pipelines"**: connect tools like Fast
 - Colour-coded: green for stdout, red for stderr, blue for system
 - Clear console and copy-to-clipboard support
 
----
 
 ## 🏗️ Architecture
 
@@ -146,7 +142,6 @@ For each node (in order):
 WorkspaceService saves output to timestamped run directory
 ```
 
----
 
 ## 📁 Project Structure
 
@@ -187,7 +182,6 @@ bioflow/
 └── README.md                                        ← This file
 ```
 
----
 
 ## 🚀 Getting Started
 
@@ -227,7 +221,6 @@ flutter build linux
 > ```
 > This is required for Docker CLI access on some macOS setups.
 
----
 
 ## 🎓 How it Works
 
@@ -255,7 +248,6 @@ python -c "open('/output/result.txt','w').write('hello')"
 cat $INPUT_FILE > /output/final.txt
 ```
 
----
 
 ## � Example Pipelines
 
@@ -263,13 +255,13 @@ These are ready-to-use node configurations to try immediately after installing B
 
 ### Example 1 — Hello World (alpine)
 | Field | Value |
-|-------|-------|
+--|
 | Docker Image | `alpine` |
 | Command | `echo "Hello from BioFlow!" > /output/hello.txt` |
 
 ### Example 2 — Python Data Processing
 | Field | Value |
-|-------|-------|
+--|
 | Docker Image | `python:3.11-slim` |
 | Command | `python -c "data=[1,2,3,4,5]; open('/output/stats.txt','w').write(f'Sum: {sum(data)}, Mean: {sum(data)/len(data)}')"` |
 
@@ -277,13 +269,13 @@ These are ready-to-use node configurations to try immediately after installing B
 
 **Node 1** — Generate data:
 | Field | Value |
-|-------|-------|
+--|
 | Docker Image | `alpine` |
 | Command | `sh -c "echo 'ATCGATCG\nGCTAGCTA\nTTAAGGCC' > /output/sequences.txt"` |
 
 **Node 2** — Count sequences (connects from Node 1's output):
 | Field | Value |
-|-------|-------|
+--|
 | Docker Image | `alpine` |
 | Command | `sh -c "wc -l < $INPUT_FILE > /output/count.txt && echo 'Lines counted!'"` |
 
@@ -291,20 +283,19 @@ Connect Node 1 → Node 2 on the canvas. When executed, `$INPUT_FILE` in Node 2 
 
 ### Example 4 — FastQC Quality Control
 | Field | Value |
-|-------|-------|
+--|
 | Docker Image | `biocontainers/fastqc:v0.11.9_cv8` |
 | Command | `fastqc $INPUT_FILE -o /output/` |
 
 Requires an input FASTQ file from an upstream node.
 
----
 
 ## �📊 Implementation Status
 
 ### ✅ Fully Implemented
 
 | Feature | Notes |
-|---------|-------|
+-|
 | Visual canvas with zoom/pan | Infinite canvas, smooth animations |
 | Drag-and-drop nodes | From sidebar to canvas |
 | Docker Hub search | Real-time, official + community images |
@@ -324,7 +315,7 @@ Requires an input FASTQ file from an upstream node.
 ### 🚧 Planned
 
 | Feature | Priority |
-|---------|----------|
+-|
 | Save / Load pipelines (JSON) | High |
 | Undo / Redo | High |
 | Pipeline templates library | High |
@@ -333,7 +324,6 @@ Requires an input FASTQ file from an upstream node.
 | Team collaboration | Low |
 | Enterprise SSO | Low |
 
----
 
 ## 🗺️ Roadmap
 
@@ -361,12 +351,11 @@ Requires an input FASTQ file from an upstream node.
 - [ ] White-label edition
 - [ ] Priority support SLA
 
----
 
 ## 🛠️ Technology Stack
 
 | Layer | Technology | Purpose |
-|-------|-----------|---------|
+---|
 | UI Framework | Flutter 3.5.3 | Cross-platform desktop UI |
 | Language | Dart 3.5.3 | Application logic |
 | State Management | GetX 4.x | Reactive state + DI |
@@ -376,7 +365,6 @@ Requires an input FASTQ file from an upstream node.
 | URLs | `url_launcher` | Open Docker download links |
 | File Paths | `path` + `path_provider` | Output directory management |
 
----
 
 ## 🎨 Design System
 
@@ -390,7 +378,6 @@ Background: #F7F8FA  (Slate Gray)
 Canvas:     #0F172A  (Dark Navy)
 ```
 
----
 
 ## 🤝 Contributing
 
@@ -407,19 +394,16 @@ Contributions are very welcome!
 - Add keyboard shortcut (Delete to remove selected node)
 - Write documentation for a specific bioinformatics tool's Docker command
 
----
 
 ## 📝 License
 
 MIT License — see [LICENSE](LICENSE) for details.
 
----
 
 ## 🔧 macOS Docker Connectivity — Setup Guide
 
 BioFlow communicates with Docker by calling the Docker CLI directly (not through Docker's API). This section explains **exactly how the connection works** and what you need to do on your Mac to make it work.
 
----
 
 ### How BioFlow Finds and Connects to Docker
 
@@ -441,7 +425,6 @@ When you click **Execute**, BioFlow does the following internally:
 4. Run containers via: docker run --rm -i ...
 ```
 
----
 
 ### Step-by-Step Setup (macOS)
 
@@ -454,7 +437,6 @@ Download and install Docker Desktop for your Mac architecture:
 
 After installing, open **Docker Desktop** from Applications and wait for the whale icon to appear in the menu bar (fully started).
 
----
 
 #### Step 2 — Verify Docker CLI is accessible
 
@@ -481,7 +463,6 @@ sudo ln -sf /Applications/Docker.app/Contents/Resources/bin/docker /usr/local/bi
 docker --version
 ```
 
----
 
 #### Step 3 — Confirm the Docker socket exists
 
@@ -496,7 +477,6 @@ ls -la ~/.docker/run/docker.sock
 
 If the file **does not exist**, Docker Desktop is not fully started. Open Docker Desktop and wait for it to say "Docker Desktop is running".
 
----
 
 #### Step 4 — Set the HOME environment variable
 
@@ -521,7 +501,6 @@ echo 'export HOME="/Users/$(whoami)"' >> ~/.zshrc
 source ~/.zshrc
 ```
 
----
 
 #### Step 5 — Verify Docker daemon is fully reachable
 
@@ -538,7 +517,6 @@ docker info | head -5
 
 If you get `"Cannot connect to the Docker daemon"` here, BioFlow will also fail. Fix Docker Desktop first.
 
----
 
 #### Step 6 — Test running a container (end-to-end test)
 
@@ -554,7 +532,6 @@ docker run --rm alpine echo "BioFlow Docker connection works!"
 
 If this works, BioFlow pipeline execution will work too.
 
----
 
 ### Windows Setup (Brief)
 
@@ -573,7 +550,6 @@ docker run --rm alpine echo "BioFlow Docker works on Windows!"
 
 BioFlow finds the Docker binary as `docker.exe` on Windows — no extra setup needed beyond having Docker Desktop running.
 
----
 
 ### Apple Silicon (M1/M2/M3) Users
 
@@ -589,12 +565,11 @@ softwareupdate --install-rosetta --agree-to-license
 
 In Docker Desktop → Settings → General, ensure **"Use Rosetta for x86/amd64 emulation on Apple Silicon"** is checked.
 
----
 
 ### Quick Troubleshooting
 
 | Symptom | Fix |
-|---------|-----|
+--|
 | BioFlow banner shows "Docker not running" | Start Docker Desktop, wait for whale icon |
 | `docker: command not found` in terminal | Run `sudo ln -sf /Applications/Docker.app/Contents/Resources/bin/docker /usr/local/bin/docker` |
 | Socket file missing (`~/.docker/run/docker.sock`) | Docker Desktop not fully started; wait or restart it |
@@ -602,7 +577,6 @@ In Docker Desktop → Settings → General, ensure **"Use Rosetta for x86/amd64 
 | Apple Silicon: image fails with architecture error | Enable Rosetta in Docker Desktop settings |
 | App works in debug but not release build | Ensure `com.apple.security.app-sandbox` is `false` in Release.entitlements |
 
----
 
 ### macOS Entitlements (for developers building from source)
 
@@ -621,7 +595,6 @@ The app requires these macOS entitlements to spawn Docker CLI processes and acce
 > [!IMPORTANT]
 > If `app-sandbox` is set to `true`, BioFlow **cannot** execute Docker commands. The app will start but all pipeline runs will silently fail.
 
----
 
 ## 🙏 Acknowledgments
 
@@ -630,7 +603,6 @@ The app requires these macOS entitlements to spawn Docker CLI processes and acce
 - Icons from [Material Design](https://material.io/icons)
 - Inspired by n8n's visual workflow UX
 
----
 
 <div align="center">
 
