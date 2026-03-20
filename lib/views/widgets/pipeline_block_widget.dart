@@ -85,14 +85,16 @@ class _PipelineBlockWidgetState extends State<PipelineBlockWidget>
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Stack(
-                      clipBehavior: Clip.none,
-                      children: [
-                        // Main block
-                        _buildMainBlock(isSelected),
-                        // Connection dots
-                        _buildConnectionDots(),
-                      ],
+                    IntrinsicHeight(
+                      child: Stack(
+                        clipBehavior: Clip.none,
+                        children: [
+                          // Main block
+                          _buildMainBlock(isSelected),
+                          // Connection dots
+                          _buildConnectionDots(),
+                        ],
+                      ),
                     ),
                     // Fix #7: Pull progress bar below the block when downloading
                     GetBuilder<PipelineController>(
@@ -104,9 +106,14 @@ class _PipelineBlockWidgetState extends State<PipelineBlockWidget>
                         return Container(
                           width: 180,
                           margin: const EdgeInsets.only(top: 4),
-                          padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 4,
+                            vertical: 2,
+                          ),
                           decoration: BoxDecoration(
-                            color: const Color(0xFF0F172A).withValues(alpha: 0.85),
+                            color: const Color(
+                              0xFF0F172A,
+                            ).withValues(alpha: 0.85),
                             borderRadius: BorderRadius.circular(6),
                           ),
                           child: Column(
@@ -131,7 +138,8 @@ class _PipelineBlockWidgetState extends State<PipelineBlockWidget>
                                   minHeight: 4,
                                   backgroundColor: const Color(0xFF1E293B),
                                   valueColor: AlwaysStoppedAnimation(
-                                      widget.node.primaryColor),
+                                    widget.node.primaryColor,
+                                  ),
                                 ),
                               ),
                             ],
@@ -155,12 +163,30 @@ class _PipelineBlockWidgetState extends State<PipelineBlockWidget>
       context: context,
       position: RelativeRect.fromLTRB(100, 100, 100, 100),
       items: [
-        const PopupMenuItem(value: 'duplicate', child: Row(
-          children: [Icon(Icons.copy_rounded, size: 16), SizedBox(width: 8), Text('Duplicate Node')],
-        )),
-        const PopupMenuItem(value: 'delete', child: Row(
-          children: [Icon(Icons.delete_outline_rounded, size: 16, color: Color(0xFFEF4444)), SizedBox(width: 8), Text('Delete Node', style: TextStyle(color: Color(0xFFEF4444)))],
-        )),
+        const PopupMenuItem(
+          value: 'duplicate',
+          child: Row(
+            children: [
+              Icon(Icons.copy_rounded, size: 16),
+              SizedBox(width: 8),
+              Text('Duplicate Node'),
+            ],
+          ),
+        ),
+        const PopupMenuItem(
+          value: 'delete',
+          child: Row(
+            children: [
+              Icon(
+                Icons.delete_outline_rounded,
+                size: 16,
+                color: Color(0xFFEF4444),
+              ),
+              SizedBox(width: 8),
+              Text('Delete Node', style: TextStyle(color: Color(0xFFEF4444))),
+            ],
+          ),
+        ),
       ],
     ).then((value) {
       if (value == 'duplicate') {
@@ -179,10 +205,7 @@ class _PipelineBlockWidgetState extends State<PipelineBlockWidget>
         borderRadius: BorderRadius.circular(12),
         child: _buildBlockContent(isDragging: true),
       ),
-      childWhenDragging: Opacity(
-        opacity: 0.4,
-        child: _buildBlockContent(),
-      ),
+      childWhenDragging: Opacity(opacity: 0.4, child: _buildBlockContent()),
       onDragEnd: (details) {
         final renderBox =
             widget.canvasKey.currentContext?.findRenderObject() as RenderBox?;
@@ -198,12 +221,14 @@ class _PipelineBlockWidgetState extends State<PipelineBlockWidget>
     );
   }
 
-  Widget _buildBlockContent(
-      {bool isDragging = false, bool isSelected = false}) {
+  Widget _buildBlockContent({
+    bool isDragging = false,
+    bool isSelected = false,
+  }) {
     return AnimatedContainer(
       duration: const Duration(milliseconds: 200),
       width: 180,
-      height: 60,
+      height: 58,
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(12),
@@ -211,14 +236,15 @@ class _PipelineBlockWidgetState extends State<PipelineBlockWidget>
           color: isSelected
               ? widget.node.primaryColor
               : (isDragging
-                  ? widget.node.primaryColor.withOpacity(0.5)
-                  : const Color(0xFFE2E8F0)),
+                    ? widget.node.primaryColor.withOpacity(0.5)
+                    : const Color(0xFFE2E8F0)),
           width: isSelected ? 2 : 1,
         ),
         boxShadow: [
           BoxShadow(
-            color: Colors.black
-                .withOpacity(isDragging ? 0.25 : (isSelected ? 0.15 : 0.08)),
+            color: Colors.black.withOpacity(
+              isDragging ? 0.25 : (isSelected ? 0.15 : 0.08),
+            ),
             blurRadius: isDragging ? 20 : (isSelected ? 12 : 8),
             offset: Offset(0, isDragging ? 8 : (isSelected ? 4 : 2)),
           ),
@@ -307,12 +333,43 @@ class _PipelineBlockWidgetState extends State<PipelineBlockWidget>
                   );
                 }
 
+                // Show Retry button on hover if error/failed
+                if (_isHovering &&
+                    (widget.node.status == BlockStatus.error ||
+                        widget.node.status == BlockStatus.failed)) {
+                  return Tooltip(
+                    message: widget.node.downloadStatus ?? 'Download failed',
+                    preferBelow: false,
+                    child: InkWell(
+                      onTap: () {
+                        Get.find<PipelineController>().retryDownload(
+                          widget.node.id,
+                        );
+                      },
+                      child: Container(
+                        width: 24,
+                        height: 24,
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFEF4444).withOpacity(0.1),
+                          shape: BoxShape.circle,
+                        ),
+                        child: const Icon(
+                          Icons.refresh_rounded,
+                          color: Color(0xFFEF4444),
+                          size: 16,
+                        ),
+                      ),
+                    ),
+                  );
+                }
+
                 // Show Run button on hover if ready
                 if (_isHovering && widget.node.status == BlockStatus.ready) {
                   return InkWell(
                     onTap: () {
-                      Get.find<PipelineController>()
-                          .executeNode(widget.node.id);
+                      Get.find<PipelineController>().executeNode(
+                        widget.node.id,
+                      );
                     },
                     child: Container(
                       width: 24,
@@ -340,10 +397,10 @@ class _PipelineBlockWidgetState extends State<PipelineBlockWidget>
 
   Widget _buildConnectionDots() {
     return SizedBox(
-      width: 180, // Match main block width
-      height: 60, // Match main block height
+      width: 180,
+      height: 58,
       child: Stack(
-        clipBehavior: Clip.none, // Allow dots to render outside bounds
+        clipBehavior: Clip.none,
         children: [
           // Input dot (left side)
           if (widget.node.category != BlockCategory.input)
@@ -405,7 +462,8 @@ class _PipelineBlockWidgetState extends State<PipelineBlockWidget>
           child: CircularProgressIndicator(
             strokeWidth: 2,
             valueColor: AlwaysStoppedAnimation(
-                widget.node.primaryColor.withOpacity(0.5)),
+              widget.node.primaryColor.withOpacity(0.5),
+            ),
           ),
         );
 
@@ -449,11 +507,7 @@ class _PipelineBlockWidgetState extends State<PipelineBlockWidget>
               ),
             ],
           ),
-          child: const Icon(
-            Icons.check,
-            color: Colors.white,
-            size: 10,
-          ),
+          child: const Icon(Icons.check, color: Colors.white, size: 10),
         );
 
       case BlockStatus.pending:
@@ -491,11 +545,7 @@ class _PipelineBlockWidgetState extends State<PipelineBlockWidget>
               ),
             ],
           ),
-          child: const Icon(
-            Icons.check,
-            color: Colors.white,
-            size: 10,
-          ),
+          child: const Icon(Icons.check, color: Colors.white, size: 10),
         );
 
       case BlockStatus.failed:
@@ -513,11 +563,7 @@ class _PipelineBlockWidgetState extends State<PipelineBlockWidget>
               ),
             ],
           ),
-          child: const Icon(
-            Icons.close,
-            color: Colors.white,
-            size: 10,
-          ),
+          child: const Icon(Icons.close, color: Colors.white, size: 10),
         );
 
       case BlockStatus.error:
@@ -535,11 +581,7 @@ class _PipelineBlockWidgetState extends State<PipelineBlockWidget>
               ),
             ],
           ),
-          child: const Icon(
-            Icons.warning,
-            color: Colors.white,
-            size: 10,
-          ),
+          child: const Icon(Icons.warning, color: Colors.white, size: 10),
         );
     }
   }

@@ -16,7 +16,8 @@ import 'dart:io';
 class PipelineController extends GetxController {
   final DockerService _dockerService = DockerService();
   final WorkspaceService _workspaceService = WorkspaceService();
-  final DockerComposeExportService _exportService = DockerComposeExportService();
+  final DockerComposeExportService _exportService =
+      DockerComposeExportService();
 
   var nodes = <PipelineNode>[].obs;
   var connections = <Connection>[].obs;
@@ -35,12 +36,16 @@ class PipelineController extends GetxController {
 
   void loadPipelineData(PipelineFile tab) {
     _currentTabId = tab.id;
-    
+
     // Create new objects so they are distinct
-    nodes.value = tab.nodes.map((n) => PipelineNode.fromJson(n.toJson())).toList();
-    connections.value = tab.connections.map((c) => Connection.fromJson(c.toJson())).toList();
+    nodes.value = tab.nodes
+        .map((n) => PipelineNode.fromJson(n.toJson()))
+        .toList();
+    connections.value = tab.connections
+        .map((c) => Connection.fromJson(c.toJson()))
+        .toList();
     selectedNode.value = null;
-    
+
     // Initialize undo stack if empty
     if (!_undoStacks.containsKey(tab.id)) {
       _undoStacks[tab.id] = [];
@@ -51,7 +56,9 @@ class PipelineController extends GetxController {
 
   void saveStateToPipelineFile(PipelineFile tab) {
     tab.nodes = nodes.map((n) => PipelineNode.fromJson(n.toJson())).toList();
-    tab.connections = connections.map((c) => Connection.fromJson(c.toJson())).toList();
+    tab.connections = connections
+        .map((c) => Connection.fromJson(c.toJson()))
+        .toList();
   }
 
   void _saveHistoryState({bool isUndo = false}) {
@@ -69,11 +76,11 @@ class PipelineController extends GetxController {
         stack.add(currentState);
       }
     }
-    
+
     if (!isUndo && _redoStacks.containsKey(tabId)) {
       _redoStacks[tabId]!.clear();
     }
-    
+
     // Notify TabsController to debounce-save to disk + mark tab dirty
     Future.microtask(() {
       if (Get.isRegistered<PipelineTabsController>()) {
@@ -88,8 +95,8 @@ class PipelineController extends GetxController {
     if (_currentTabId == null) return;
     final undoStack = _undoStacks[_currentTabId!] ?? [];
     final redoStack = _redoStacks[_currentTabId!] ?? [];
-    
-    if (undoStack.length > 1) { 
+
+    if (undoStack.length > 1) {
       redoStack.add(undoStack.removeLast());
       _loadStateFromJson(undoStack.last);
     }
@@ -99,7 +106,7 @@ class PipelineController extends GetxController {
     if (_currentTabId == null) return;
     final undoStack = _undoStacks[_currentTabId!] ?? [];
     final redoStack = _redoStacks[_currentTabId!] ?? [];
-    
+
     if (redoStack.isNotEmpty) {
       final stateToRestore = redoStack.removeLast();
       undoStack.add(stateToRestore);
@@ -110,12 +117,16 @@ class PipelineController extends GetxController {
   void _loadStateFromJson(String jsonString) {
     try {
       final data = jsonDecode(jsonString) as Map<String, dynamic>;
-      final nodesList = (data['nodes'] as List).map((n) => PipelineNode.fromJson(n)).toList();
-      final connectionsList = (data['connections'] as List).map((c) => Connection.fromJson(c)).toList();
-      
+      final nodesList = (data['nodes'] as List)
+          .map((n) => PipelineNode.fromJson(n))
+          .toList();
+      final connectionsList = (data['connections'] as List)
+          .map((c) => Connection.fromJson(c))
+          .toList();
+
       nodes.value = nodesList;
       connections.value = connectionsList;
-      selectedNode.value = null; 
+      selectedNode.value = null;
     } catch (e) {
       print('Error loading state from history: $e');
     }
@@ -127,7 +138,9 @@ class PipelineController extends GetxController {
       final fullName = nodeType.substring(7); // Remove "docker:" prefix
       // Fix #10: split image:tag if user typed e.g. python:3.11
       final colonIdx = fullName.indexOf(':');
-      final imageName = colonIdx >= 0 ? fullName.substring(0, colonIdx) : fullName;
+      final imageName = colonIdx >= 0
+          ? fullName.substring(0, colonIdx)
+          : fullName;
       final tag = colonIdx >= 0 ? fullName.substring(colonIdx + 1) : 'latest';
       final node = _createDockerNode(imageName, position, tag: tag);
       nodes.add(node);
@@ -359,7 +372,7 @@ class PipelineController extends GetxController {
                 'GATK HaplotypeCaller',
                 'FreeBayes',
                 'SAMtools',
-                'VarScan'
+                'VarScan',
               ],
               value: 'GATK HaplotypeCaller',
             ),
@@ -420,13 +433,17 @@ class PipelineController extends GetxController {
     }
   }
 
-  PipelineNode _createDockerNode(String imageName, Offset position, {String tag = 'latest'}) {
+  PipelineNode _createDockerNode(
+    String imageName,
+    Offset position, {
+    String tag = 'latest',
+  }) {
     final id = const Uuid().v4();
 
     final node = PipelineNode(
       id: id,
       title: imageName,
-      description: 'Docker container execution',
+      description: '',
       position: position,
       category: BlockCategory.processing,
       iconCodePoint: '0xe1d4', // storage icon
@@ -506,8 +523,9 @@ class PipelineController extends GetxController {
         print('📥 Pulling image ${node.dockerImage}...');
 
         // Listen to pull progress stream
-        await for (final progress
-            in _dockerService.pullImage(node.dockerImage!)) {
+        await for (final progress in _dockerService.pullImage(
+          node.dockerImage!,
+        )) {
           node.downloadProgress = progress.percentage;
           node.downloadStatus = progress.message;
 
@@ -527,9 +545,27 @@ class PipelineController extends GetxController {
     }
   }
 
+  /// Retry downloading a Docker image for a node
+  Future<void> retryDownload(String nodeId) async {
+    final node = nodes.firstWhereOrNull((n) => n.id == nodeId);
+    if (node == null || node.dockerImage == null) return;
+
+    // Reset status and progress
+    node.status = BlockStatus.checking;
+    node.downloadProgress = 0.0;
+    node.downloadStatus = 'Retrying download...';
+    node.isImageLocal = false;
+    update([node.id]);
+
+    // Retry the image pull
+    await _checkAndPullImage(node);
+  }
+
   /// Executes a single node
-  Future<void> executeNode(String nodeId,
-      {Map<String, String>? inputFiles}) async {
+  Future<void> executeNode(
+    String nodeId, {
+    Map<String, String>? inputFiles,
+  }) async {
     final node = nodes.firstWhereOrNull((n) => n.id == nodeId);
     if (node == null) return;
 
@@ -646,17 +682,20 @@ class PipelineController extends GetxController {
       node.logs.add('[SYSTEM] Output saved to: $outputFilePath');
 
       // Add output file path as a parameter for reference
-      final outputParam =
-          node.parameters.firstWhereOrNull((p) => p.key == '_output_file');
+      final outputParam = node.parameters.firstWhereOrNull(
+        (p) => p.key == '_output_file',
+      );
       if (outputParam != null) {
         outputParam.value = outputFilePath;
       } else {
-        node.parameters.add(BlockParameter(
-          key: '_output_file',
-          label: 'Output File',
-          type: ParameterType.text,
-          value: outputFilePath,
-        ));
+        node.parameters.add(
+          BlockParameter(
+            key: '_output_file',
+            label: 'Output File',
+            type: ParameterType.text,
+            value: outputFilePath,
+          ),
+        );
       }
 
       if (exitCode == 0) {
@@ -754,7 +793,7 @@ class PipelineController extends GetxController {
   Future<void> exportPipelineAsDockerCompose() async {
     if (nodes.isEmpty) {
       Get.snackbar(
-        'Export Failed', 
+        'Export Failed',
         'The canvas is empty. Add nodes to export a pipeline.',
         snackPosition: SnackPosition.BOTTOM,
         backgroundColor: const Color(0xFFEF4444),
@@ -774,7 +813,10 @@ class PipelineController extends GetxController {
               children: [
                 CircularProgressIndicator(),
                 SizedBox(height: 16),
-                Text('Generating Docker-Compose Export...', style: TextStyle(fontWeight: FontWeight.w600)),
+                Text(
+                  'Generating Docker-Compose Export...',
+                  style: TextStyle(fontWeight: FontWeight.w600),
+                ),
               ],
             ),
           ),
@@ -786,17 +828,26 @@ class PipelineController extends GetxController {
       final sortedNodes = getExecutionOrder();
 
       // Generate the ZIP
-      final zipBytes = await _exportService.generateExportZip(sortedNodes, connections);
-      
-      final timestamp = DateTime.now().toIso8601String().replaceAll(':', '-').split('.')[0];
-      final filepath = await _workspaceService.saveExportZip(zipBytes, 'bioflow-export_$timestamp.zip');
+      final zipBytes = await _exportService.generateExportZip(
+        sortedNodes,
+        connections,
+      );
+
+      final timestamp = DateTime.now()
+          .toIso8601String()
+          .replaceAll(':', '-')
+          .split('.')[0];
+      final filepath = await _workspaceService.saveExportZip(
+        zipBytes,
+        'bioflow-export_$timestamp.zip',
+      );
 
       // Close dialog
       Get.back();
 
       // Show success
       Get.snackbar(
-        'Export Successful', 
+        'Export Successful',
         'Pipeline exported to $filepath',
         snackPosition: SnackPosition.BOTTOM,
         backgroundColor: const Color(0xFF10B981),
@@ -809,14 +860,13 @@ class PipelineController extends GetxController {
             }
           },
           child: const Text('OPEN', style: TextStyle(color: Colors.white)),
-        )
+        ),
       );
-      
     } catch (e) {
       Get.back(); // close dialog
-      
+
       Get.snackbar(
-        'Export Failed', 
+        'Export Failed',
         e.toString(),
         snackPosition: SnackPosition.BOTTOM,
         backgroundColor: const Color(0xFFEF4444),
@@ -871,8 +921,12 @@ class PipelineController extends GetxController {
     nodes.refresh();
   }
 
-  void addConnection(String fromId, String toId,
-      {String? fromPort, String? toPort}) {
+  void addConnection(
+    String fromId,
+    String toId, {
+    String? fromPort,
+    String? toPort,
+  }) {
     if (fromId != toId && !_connectionExists(fromId, toId)) {
       final connection = Connection(
         id: const Uuid().v4(),

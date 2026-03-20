@@ -75,16 +75,64 @@ class MyApp extends StatelessWidget {
           actions: [
             // Open Recent
             Container(
-              margin: const EdgeInsets.only(right: 8),
+              margin: const EdgeInsets.only(right: 4),
               child: TextButton.icon(
-                onPressed: () => Get.find<PipelineTabsController>().showOpenRecentDialog(),
-                icon: const Icon(Icons.history, size: 18, color: Color(0xFF64748B)),
-                label: const Text('Open Recent',
-                    style: TextStyle(color: Color(0xFF475569), fontWeight: FontWeight.w600)),
+                onPressed: () =>
+                    Get.find<PipelineTabsController>().showOpenRecentDialog(),
+                icon: const Icon(
+                  Icons.history,
+                  size: 18,
+                  color: Color(0xFF64748B),
+                ),
+                label: const Text(
+                  'Open Recent',
+                  style: TextStyle(
+                    color: Color(0xFF475569),
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
                 style: TextButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12)),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 14,
+                    vertical: 12,
+                  ),
+                ),
               ),
             ),
+            // Info Icon (Only when relevant)
+            Obx(() {
+              if (dockerCtrl.shouldShowAppleSiliconNotice) {
+                return IconButton(
+                  icon: const Icon(
+                    Icons.info_outline,
+                    color: Color(0xFF3B82F6),
+                    size: 18,
+                  ),
+                  tooltip: 'Apple Silicon Info',
+                  onPressed: () {
+                    Get.dialog(
+                      AlertDialog(
+                        title: const Row(
+                          children: [
+                            Icon(Icons.info_outline, color: Color(0xFF3B82F6)),
+                            SizedBox(width: 8),
+                            Text('Apple Silicon Detected'),
+                          ],
+                        ),
+                        content: Text(dockerCtrl.appleSiliconNotice),
+                        actions: [
+                          TextButton(
+                            onPressed: () => Get.back(),
+                            child: const Text('Close'),
+                          ),
+                        ],
+                      ),
+                    );
+                  },
+                );
+              }
+              return const SizedBox.shrink();
+            }),
             // Import Pipeline button
             Container(
               margin: const EdgeInsets.only(right: 8),
@@ -102,11 +150,24 @@ class MyApp extends StatelessWidget {
                     Get.find<PipelineTabsController>().importPipeline(result);
                   }
                 },
-                icon: const Icon(Icons.folder_open, size: 18, color: Color(0xFF64748B)),
-                label: const Text('Import',
-                    style: TextStyle(color: Color(0xFF475569), fontWeight: FontWeight.w600)),
+                icon: const Icon(
+                  Icons.folder_open,
+                  size: 18,
+                  color: Color(0xFF64748B),
+                ),
+                label: const Text(
+                  'Import',
+                  style: TextStyle(
+                    color: Color(0xFF475569),
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
                 style: TextButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12)),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 14,
+                    vertical: 12,
+                  ),
+                ),
               ),
             ),
             // Export button
@@ -118,8 +179,13 @@ class MyApp extends StatelessWidget {
                 border: Border.all(color: const Color(0xFFE2E8F0)),
               ),
               child: TextButton.icon(
-                onPressed: () => Get.find<PipelineController>().exportPipelineAsDockerCompose(),
-                icon: const Icon(Icons.download, size: 18, color: Color(0xFF64748B)),
+                onPressed: () => Get.find<PipelineController>()
+                    .exportPipelineAsDockerCompose(),
+                icon: const Icon(
+                  Icons.download,
+                  size: 18,
+                  color: Color(0xFF64748B),
+                ),
                 label: const Text(
                   'Export Docker',
                   style: TextStyle(
@@ -128,7 +194,10 @@ class MyApp extends StatelessWidget {
                   ),
                 ),
                 style: TextButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 12,
+                  ),
                 ),
               ),
             ),
@@ -168,7 +237,9 @@ class MyApp extends StatelessWidget {
                       disabledForegroundColor: Colors.white70,
                       shadowColor: Colors.transparent,
                       padding: const EdgeInsets.symmetric(
-                          horizontal: 20, vertical: 12),
+                        horizontal: 20,
+                        vertical: 12,
+                      ),
                       textStyle: const TextStyle(fontWeight: FontWeight.w600),
                     ),
                   ),
@@ -203,9 +274,7 @@ class MyApp extends StatelessWidget {
                   child: Row(
                     children: [
                       const ToolSidebar(),
-                      Expanded(
-                        child: const PipelineCanvas(),
-                      ),
+                      Expanded(child: const PipelineCanvas()),
                     ],
                   ),
                 ),
@@ -223,7 +292,7 @@ class MyApp extends StatelessWidget {
                 bottom: execCtrl.showPanel.value
                     ? 28
                     : -(execCtrl.panelHeight.value +
-                        28), // 28 is status bar height
+                          28), // 28 is status bar height
                 height: execCtrl.panelHeight.value,
                 child: const ExecutionPanel(),
               );
@@ -246,42 +315,47 @@ class MyApp extends StatelessWidget {
                     // Toggle Panel Button
                     InkWell(
                       onTap: execCtrl.togglePanel,
-                      child: Obx(() => Container(
-                            padding: const EdgeInsets.symmetric(
-                                horizontal: 8, vertical: 4),
-                            decoration: BoxDecoration(
-                              color: execCtrl.showPanel.value
-                                  ? Colors.white.withOpacity(0.2)
-                                  : Colors.transparent,
-                              borderRadius: BorderRadius.circular(4),
-                            ),
-                            child: Row(
-                              children: [
-                                Icon(
-                                  execCtrl.showPanel.value
-                                      ? Icons.keyboard_arrow_down
-                                      : Icons.keyboard_arrow_up,
-                                  size: 14,
+                      child: Obx(
+                        () => Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 8,
+                            vertical: 4,
+                          ),
+                          decoration: BoxDecoration(
+                            color: execCtrl.showPanel.value
+                                ? Colors.white.withOpacity(0.2)
+                                : Colors.transparent,
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                          child: Row(
+                            children: [
+                              Icon(
+                                execCtrl.showPanel.value
+                                    ? Icons.keyboard_arrow_down
+                                    : Icons.keyboard_arrow_up,
+                                size: 14,
+                                color: Colors.white,
+                              ),
+                              const SizedBox(width: 6),
+                              const Text(
+                                'Terminal',
+                                style: TextStyle(
                                   color: Colors.white,
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w500,
                                 ),
-                                const SizedBox(width: 6),
-                                const Text(
-                                  'Terminal',
-                                  style: TextStyle(
-                                    color: Colors.white,
-                                    fontSize: 12,
-                                    fontWeight: FontWeight.w500,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          )),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
                     ),
                     const VerticalDivider(
-                        color: Colors.white24,
-                        width: 24,
-                        indent: 6,
-                        endIndent: 6),
+                      color: Colors.white24,
+                      width: 24,
+                      indent: 6,
+                      endIndent: 6,
+                    ),
                     Obx(() {
                       if (execCtrl.isRunning.value) {
                         return const Row(
@@ -291,15 +365,18 @@ class MyApp extends StatelessWidget {
                               height: 10,
                               child: CircularProgressIndicator(
                                 strokeWidth: 2,
-                                valueColor:
-                                    AlwaysStoppedAnimation(Colors.white),
+                                valueColor: AlwaysStoppedAnimation(
+                                  Colors.white,
+                                ),
                               ),
                             ),
                             SizedBox(width: 8),
                             Text(
                               'Running Pipeline...',
-                              style:
-                                  TextStyle(color: Colors.white, fontSize: 11),
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontSize: 11,
+                              ),
                             ),
                           ],
                         );

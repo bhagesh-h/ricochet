@@ -14,7 +14,6 @@ class DockerStatusBanner extends StatefulWidget {
 
 class _DockerStatusBannerState extends State<DockerStatusBanner> {
   // Apple Silicon notice is collapsed by default when Docker is healthy
-  bool _appleSiliconExpanded = false;
 
   @override
   Widget build(BuildContext context) {
@@ -35,10 +34,10 @@ class _DockerStatusBannerState extends State<DockerStatusBanner> {
         return const SizedBox.shrink();
       }
 
-      // Docker is running BUT Apple Silicon → collapsible info strip
+      // Docker is running BUT Apple Silicon → hide banner (will show in AppBar)
       if (status == DockerStatus.running &&
           dockerCtrl.shouldShowAppleSiliconNotice) {
-        return _buildCollapsibleAppleSiliconBanner(dockerCtrl);
+        return const SizedBox.shrink();
       }
 
       // Docker NOT running → always-visible warning/error banner
@@ -46,71 +45,6 @@ class _DockerStatusBannerState extends State<DockerStatusBanner> {
     });
   }
 
-  /// A slim, collapsible info strip for the Apple Silicon notice.
-  Widget _buildCollapsibleAppleSiliconBanner(DockerController dockerCtrl) {
-    return AnimatedSize(
-      duration: const Duration(milliseconds: 200),
-      curve: Curves.easeInOut,
-      child: Container(
-        width: double.infinity,
-        decoration: const BoxDecoration(
-          color: Color(0xFFEFF6FF),
-          border: Border(
-            bottom: BorderSide(color: Color(0xFFBFDBFE), width: 1),
-          ),
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            // Collapsed header row — always visible
-            InkWell(
-              onTap: () => setState(() => _appleSiliconExpanded = !_appleSiliconExpanded),
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                child: Row(
-                  children: [
-                    const Icon(Icons.info_outline, color: Color(0xFF3B82F6), size: 16),
-                    const SizedBox(width: 8),
-                    const Text(
-                      'Apple Silicon Detected',
-                      style: TextStyle(
-                        color: Color(0xFF1E40AF),
-                        fontWeight: FontWeight.w600,
-                        fontSize: 12,
-                      ),
-                    ),
-                    const Spacer(),
-                    Icon(
-                      _appleSiliconExpanded
-                          ? Icons.keyboard_arrow_up
-                          : Icons.keyboard_arrow_down,
-                      color: const Color(0xFF3B82F6),
-                      size: 18,
-                    ),
-                  ],
-                ),
-              ),
-            ),
-            // Expanded detail — only when tapped
-            if (_appleSiliconExpanded)
-              Padding(
-                padding: const EdgeInsets.only(left: 40, right: 16, bottom: 8),
-                child: Align(
-                  alignment: Alignment.centerLeft,
-                  child: Text(
-                    dockerCtrl.appleSiliconNotice,
-                    style: const TextStyle(
-                      color: Color(0xFF1E40AF),
-                      fontSize: 12,
-                    ),
-                  ),
-                ),
-              ),
-          ],
-        ),
-      ),
-    );
-  }
 
   Widget _buildBanner(
       BuildContext context, DockerController dockerCtrl, DockerStatus status) {
