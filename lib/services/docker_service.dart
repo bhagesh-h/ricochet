@@ -13,6 +13,9 @@ class DockerService {
   DockerService._internal();
 
   PlatformInfo? _platformInfo;
+  
+  // Track active processes for reliable cleanup (fix #6)
+  final Map<String, Process> _activeProcesses = {};
 
   /// Get platform information (cached)
   Future<PlatformInfo> getPlatformInfo() async {
@@ -294,6 +297,9 @@ class DockerService {
         environment: _dockerEnvironment,
       );
 
+      // Register process for cancellation
+      _activeProcesses['pull:$imageName'] = process;
+
       // Track layers for overall progress
       final Map<String, double> layerProgress = {};
       final Set<String> knownLayers = {};
@@ -309,6 +315,9 @@ class DockerService {
           yield progress;
         }
       }
+
+      // Cleanup
+      _activeProcesses.remove('pull:$imageName');
 
       // Wait for process to complete
       final exitCode = await process.exitCode;
@@ -403,13 +412,7 @@ class DockerService {
       // Handle Extracting progress bar
       final extractMatch = extractPattern.firstMatch(line);
       if (extractMatch != null) {
-        final progressBar = extractMatch.group(1)!;
-
-        // Extracting is the second phase, so we can consider download 100% done
-        // But for overall progress, we might want to weight it.
-        // For simplicity, let's say extracting is also part of the 0-100% journey.
-        // Or we can just keep it at 100% since "download" is done.
-        // Let's treat extracting as "100% downloaded, now installing"
+        // Extracting is the second phase — treat as 100% downloaded
         layerProgress[layerId] = 1.0;
 
         return DockerPullProgress.extracting(
@@ -447,6 +450,7 @@ class DockerService {
   Future<Process> runContainer({
     required String image,
     String? containerName,
+    String? platform,
     List<String> command = const [],
     List<String> volumes = const [],
     List<String> environment = const [],
@@ -457,7 +461,15 @@ class DockerService {
       throw Exception('Docker executable not found');
     }
 
-    final args = ['run', '--rm', '-i'];
+    // Do NOT pass -i (--interactive) — it keeps stdin open and causes tools
+    // that read stdin (like fastqc with no file arg) to hang indefinitely.
+    // Bioinformatics tools operating on mounted files never need stdin.
+    final args = ['run', '--rm'];
+
+    // Add platform flag if needed (fix #1.1)
+    if (platform != null && platform.isNotEmpty) {
+      args.addAll(['--platform', platform]);
+    }
 
     // Add container name
     if (containerName != null) {
@@ -491,12 +503,21 @@ class DockerService {
 
     print('🚀 Running container: $dockerPath ${args.join(' ')}');
 
-    return Process.start(
+    final process = await Process.start(
       dockerPath,
       args,
       runInShell: false,
       environment: _dockerEnvironment,
     );
+
+    // Register process for cancellation
+    if (containerName != null) {
+      _activeProcesses['run:$containerName'] = process;
+      // Cleanup when process ends
+      process.exitCode.then((_) => _activeProcesses.remove('run:$containerName'));
+    }
+
+    return process;
   }
 
   /// Calculate overall progress from all layers
@@ -513,18 +534,47 @@ class DockerService {
     return sum / totalLayers;
   }
 
-  /// Stop a running container
+  /// Stop a running container and its local process handle
   Future<void> stopContainer(String containerName) async {
     final dockerPath = await getDockerExecutablePath();
-    if (dockerPath == null) return;
+    
+    // 1. Kill the local process handle if tracked
+    final runKey = 'run:$containerName';
+    if (_activeProcesses.containsKey(runKey)) {
+      print('🪓 Killing local process handle for: $containerName');
+      _activeProcesses[runKey]!.kill(ProcessSignal.sigkill);
+      _activeProcesses.remove(runKey);
+    }
 
-    print('🛑 Stopping container: $containerName');
-    await Process.run(
-      dockerPath,
-      ['kill', containerName],
-      runInShell: false,
-      environment: _dockerEnvironment,
-    );
+    // 2. Kill the Docker container itself via CLI
+    if (dockerPath != null) {
+      print('🛑 Stopping Docker container via CLI: $containerName');
+      await Process.run(
+        dockerPath,
+        ['kill', containerName],
+        runInShell: false,
+        environment: _dockerEnvironment,
+      );
+    }
+  }
+
+  /// Stop an ongoing image pull
+  Future<void> stopPull(String imageName) async {
+    final key = 'pull:$imageName';
+    if (_activeProcesses.containsKey(key)) {
+      print('🛑 Cancelling image pull: $imageName');
+      _activeProcesses[key]!.kill(ProcessSignal.sigkill);
+      _activeProcesses.remove(key);
+    }
+  }
+
+  /// Kill ALL managed processes (useful on app exit or emergency stop)
+  void killAllProcesses() {
+    print('🚨 Emergency Stop: Killing all ${_activeProcesses.length} processes');
+    for (final process in _activeProcesses.values) {
+      process.kill(ProcessSignal.sigkill);
+    }
+    _activeProcesses.clear();
   }
 
   /// Parse byte string to integer

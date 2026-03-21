@@ -2,6 +2,7 @@ import 'package:get/get.dart';
 import 'package:uuid/uuid.dart';
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
+import '../controllers/docker_search_controller.dart';
 import '../models/pipeline_node.dart';
 import '../models/pipeline_file.dart';
 import '../models/docker_pull_progress.dart';
@@ -9,9 +10,11 @@ import '../services/docker_service.dart';
 import '../services/workspace_service.dart';
 import '../services/docker_compose_export_service.dart';
 import 'pipeline_tabs_controller.dart';
-import 'dart:ui';
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:ui';
+import '../utils/shell_utils.dart';
 
 class PipelineController extends GetxController {
   final DockerService _dockerService = DockerService();
@@ -22,6 +25,13 @@ class PipelineController extends GetxController {
   var nodes = <PipelineNode>[].obs;
   var connections = <Connection>[].obs;
   var selectedNode = Rxn<String>();
+  var selectedConnectionId = Rxn<String>();
+  var cycleConnectionIds = <String>[].obs;
+
+  void deselectAll() {
+    selectNode(null);
+    selectConnection(null);
+  }
 
   // Undo/Redo Stacks keyed by tab ID
   final Map<String, List<String>> _undoStacks = {};
@@ -62,6 +72,9 @@ class PipelineController extends GetxController {
   }
 
   void _saveHistoryState({bool isUndo = false}) {
+    // Refresh cycle detection (fix #2.3)
+    cycleConnectionIds.value = getCycleConnections();
+
     if (_currentTabId == null) return;
     final tabId = _currentTabId!;
 
@@ -133,22 +146,66 @@ class PipelineController extends GetxController {
   }
 
   void addNode(String nodeType, Offset position) {
-    // Check if this is a Docker image (starts with "docker:")
+    // Check if this is a Docker image (starts with "docker:") (fix #10)
     if (nodeType.startsWith('docker:')) {
       final fullName = nodeType.substring(7); // Remove "docker:" prefix
-      // Fix #10: split image:tag if user typed e.g. python:3.11
+      
       final colonIdx = fullName.indexOf(':');
-      final imageName = colonIdx >= 0
-          ? fullName.substring(0, colonIdx)
-          : fullName;
-      final tag = colonIdx >= 0 ? fullName.substring(colonIdx + 1) : 'latest';
-      final node = _createDockerNode(imageName, position, tag: tag);
+      final imageName = colonIdx >= 0 ? fullName.substring(0, colonIdx) : fullName;
+      final providedTag = colonIdx >= 0 ? fullName.substring(colonIdx + 1) : null;
+      
+      // If no tag is provided, default to 'latest' temporarily but trigger auto-discovery
+      final initialTag = providedTag ?? 'latest';
+      final node = _createDockerNode(imageName, position, tag: initialTag);
+      
+      // Mark as auto-selected initially so _resolveSmartTag can overwrite it
+      if (providedTag == null) {
+         final tagParam = node.parameters.firstWhereOrNull((p) => p.key == 'tag');
+         if (tagParam != null) tagParam.isAuto = true;
+      }
+      
       nodes.add(node);
+      
+      // Asynchronously find the "smart" default tag if not provided
+      if (providedTag == null) {
+        _resolveSmartTag(node.id, imageName);
+      }
     } else {
       final node = _createNodeFromType(nodeType, position);
       nodes.add(node);
     }
     _saveHistoryState();
+  }
+
+  Future<void> _resolveSmartTag(String nodeId, String imageName) async {
+    try {
+      final searchCtrl = Get.find<DockerSearchController>();
+      final smartTag = await searchCtrl.getSmartDefaultTag(imageName);
+
+      // RACECONDITION GUARD: Check if node still exists and its image matches
+      final node = nodes.firstWhereOrNull((n) => n.id == nodeId);
+      if (node == null) return;
+      if (node.dockerImage != imageName) return;
+
+      final paramIdx = node.parameters.indexWhere((p) => p.key == 'tag');
+      if (paramIdx == -1) return;
+
+      // ELITE LOCK: If user manually changed the tag during fetch, DO NOT OVERWRITE
+      if (!node.parameters[paramIdx].isAuto) {
+        print('🔒 Tag for $imageName was manually modified. Resolution aborted.');
+        return;
+      }
+
+      // Update the node's tag parameter
+      node.parameters[paramIdx].value = smartTag;
+      node.parameters[paramIdx].isAuto = true; // Still owned by system
+      
+      // Re-trigger validation
+      _checkAndPullImage(node);
+      update([node.id]);
+    } catch (e) {
+      print('⚠️ Failed to resolve smart tag for $imageName: $e');
+    }
   }
 
   /// Duplicate a node — deep copy via JSON, new UUID, offset position. (fix #13)
@@ -237,33 +294,26 @@ class PipelineController extends GetxController {
           position: position,
           category: BlockCategory.analysis,
           iconCodePoint: '0xe1b8', // analytics icon
+          dockerImage: 'staphb/fastqc',
           parameters: [
+            BlockParameter(
+              key: 'tag',
+              label: 'Image Tag',
+              type: ParameterType.text,
+              value: 'latest',
+            ),
             BlockParameter(
               key: 'threads',
               label: 'Number of Threads',
               type: ParameterType.numeric,
               value: 4,
-              placeholder: 'Enter number of threads',
-            ),
-            BlockParameter(
-              key: 'kmer_size',
-              label: 'K-mer Size',
-              type: ParameterType.numeric,
-              value: 7,
-              placeholder: 'Enter k-mer size',
             ),
             BlockParameter(
               key: 'format',
               label: 'Output Format',
               type: ParameterType.dropdown,
-              options: ['HTML', 'JSON', 'XML'],
-              value: 'HTML',
-            ),
-            BlockParameter(
-              key: 'enable_adapters',
-              label: 'Check Adapters',
-              type: ParameterType.toggle,
-              value: true,
+              options: ['fastqc', 'casava', 'nanooomore'],
+              value: 'fastqc',
             ),
           ],
         );
@@ -276,41 +326,37 @@ class PipelineController extends GetxController {
           position: position,
           category: BlockCategory.processing,
           iconCodePoint: '0xe14e', // content_cut icon
+          dockerImage: 'staphb/trimmomatic',
           parameters: [
+            BlockParameter(
+              key: 'tag',
+              label: 'Image Tag',
+              type: ParameterType.text,
+              value: 'latest',
+            ),
             BlockParameter(
               key: 'leading_quality',
               label: 'Leading Quality',
               type: ParameterType.numeric,
               value: 3,
-              placeholder: 'Minimum quality for leading bases',
             ),
             BlockParameter(
               key: 'trailing_quality',
               label: 'Trailing Quality',
               type: ParameterType.numeric,
               value: 3,
-              placeholder: 'Minimum quality for trailing bases',
             ),
             BlockParameter(
               key: 'window_size',
               label: 'Window Size',
               type: ParameterType.numeric,
               value: 4,
-              placeholder: 'Sliding window size',
-            ),
-            BlockParameter(
-              key: 'required_quality',
-              label: 'Required Quality',
-              type: ParameterType.numeric,
-              value: 15,
-              placeholder: 'Average quality required',
             ),
             BlockParameter(
               key: 'min_length',
               label: 'Minimum Length',
               type: ParameterType.numeric,
               value: 36,
-              placeholder: 'Minimum read length',
             ),
           ],
         );
@@ -323,7 +369,14 @@ class PipelineController extends GetxController {
           position: position,
           category: BlockCategory.processing,
           iconCodePoint: '0xe8d5', // compare_arrows icon
+          dockerImage: 'staphb/bwa',
           parameters: [
+            BlockParameter(
+              key: 'tag',
+              label: 'Image Tag',
+              type: ParameterType.text,
+              value: 'latest',
+            ),
             BlockParameter(
               key: 'algorithm',
               label: 'Algorithm',
@@ -336,72 +389,70 @@ class PipelineController extends GetxController {
               label: 'Threads',
               type: ParameterType.numeric,
               value: 8,
-              placeholder: 'Number of threads',
-            ),
-            BlockParameter(
-              key: 'min_seed_length',
-              label: 'Min Seed Length',
-              type: ParameterType.numeric,
-              value: 19,
-              placeholder: 'Minimum seed length',
-            ),
-            BlockParameter(
-              key: 'band_width',
-              label: 'Band Width',
-              type: ParameterType.numeric,
-              value: 100,
-              placeholder: 'Band width for banded alignment',
             ),
           ],
         );
 
-      case 'Variant Caller':
+      case 'STAR':
         return PipelineNode(
           id: id,
-          title: 'Variant Caller',
-          description: 'Call genetic variants from alignments',
+          title: 'STAR Aligner',
+          description: 'Spliced alignment to reference',
           position: position,
-          category: BlockCategory.analysis,
-          iconCodePoint: '0xe8b6', // search icon
+          category: BlockCategory.processing,
+          iconCodePoint: '0xe0e3', // biotech icon
+          dockerImage: 'staphb/star',
           parameters: [
             BlockParameter(
-              key: 'caller_type',
-              label: 'Caller Type',
+              key: 'tag',
+              label: 'Image Tag',
+              type: ParameterType.text,
+              value: 'latest',
+            ),
+            BlockParameter(
+              key: 'threads',
+              label: 'Threads',
+              type: ParameterType.numeric,
+              value: 8,
+            ),
+            BlockParameter(
+              key: 'run_mode',
+              label: 'Run Mode',
               type: ParameterType.dropdown,
-              options: [
-                'GATK HaplotypeCaller',
-                'FreeBayes',
-                'SAMtools',
-                'VarScan',
-              ],
-              value: 'GATK HaplotypeCaller',
+              options: ['alignReads', 'genomeGenerate'],
+              value: 'alignReads',
+            ),
+          ],
+        );
+
+      case 'Samtools':
+        return PipelineNode(
+          id: id,
+          title: 'Samtools',
+          description: 'Process SAM/BAM alignments',
+          position: position,
+          category: BlockCategory.processing,
+          iconCodePoint: '0xeb43', // transform icon
+          dockerImage: 'staphb/samtools',
+          parameters: [
+            BlockParameter(
+              key: 'tag',
+              label: 'Image Tag',
+              type: ParameterType.text,
+              value: 'latest',
             ),
             BlockParameter(
-              key: 'min_base_quality',
-              label: 'Min Base Quality',
+              key: 'command',
+              label: 'Command',
+              type: ParameterType.dropdown,
+              options: ['view', 'sort', 'index', 'flagstat', 'stats'],
+              value: 'view',
+            ),
+            BlockParameter(
+              key: 'threads',
+              label: 'Threads',
               type: ParameterType.numeric,
-              value: 20,
-              placeholder: 'Minimum base quality score',
-            ),
-            BlockParameter(
-              key: 'min_mapping_quality',
-              label: 'Min Mapping Quality',
-              type: ParameterType.numeric,
-              value: 20,
-              placeholder: 'Minimum mapping quality',
-            ),
-            BlockParameter(
-              key: 'ploidy',
-              label: 'Ploidy',
-              type: ParameterType.numeric,
-              value: 2,
-              placeholder: 'Sample ploidy',
-            ),
-            BlockParameter(
-              key: 'emit_ref_confidence',
-              label: 'Emit Reference Confidence',
-              type: ParameterType.toggle,
-              value: false,
+              value: 4,
             ),
           ],
         );
@@ -469,6 +520,7 @@ class PipelineController extends GetxController {
           key: 'command',
           label: 'Command',
           type: ParameterType.text,
+          value: _getDefaultCommand(imageName),
           placeholder: 'Command to run inside container',
         ),
         BlockParameter(
@@ -498,13 +550,87 @@ class PipelineController extends GetxController {
     return node;
   }
 
+  /// Returns a pre-filled default command for well-known bioinformatics images
+  /// so that newly-dropped nodes are immediately runnable without the user
+  /// having to remember the tool's syntax.  Returns [null] for unrecognised
+  /// images so the field stays blank and shows the placeholder text instead of
+  /// a confusing generic example.
+  static String? _getDefaultCommand(String imageName) {
+    final lower = imageName.toLowerCase();
+    if (lower.contains('fastqc')) {
+      return 'fastqc \$INPUT_FILE --outdir /outputs/';
+    }
+    if (lower.contains('trimmomatic')) {
+      return 'trimmomatic SE \$INPUT_FILE /outputs/trimmed.fastq.gz '
+          'LEADING:3 TRAILING:3 SLIDINGWINDOW:4:15 MINLEN:36';
+    }
+    if (lower.contains('bwa')) {
+      return 'bwa mem /ref/genome.fa \$INPUT_FILE -o /outputs/aligned.sam';
+    }
+    if (lower.contains('samtools')) {
+      return 'samtools view -bS \$INPUT_FILE -o /outputs/output.bam';
+    }
+    if (lower.contains('star')) {
+      return 'STAR --runMode alignReads --genomeDir /ref '
+          '--readFilesIn \$INPUT_FILE --outFileNamePrefix /outputs/';
+    }
+    if (lower.contains('gatk')) {
+      return 'gatk HaplotypeCaller -I \$INPUT_FILE -O /outputs/variants.vcf';
+    }
+    if (lower.contains('multiqc')) {
+      return 'multiqc /inputs/ -o /outputs/';
+    }
+    if (lower.contains('hisat')) {
+      return 'hisat2 -x /ref/index -U \$INPUT_FILE -S /outputs/aligned.sam';
+    }
+    if (lower.contains('bowtie')) {
+      return 'bowtie2 -x /ref/index -U \$INPUT_FILE -S /outputs/aligned.sam';
+    }
+    if (lower.contains('kallisto')) {
+      return 'kallisto quant -i /ref/index.idx -o /outputs/ \$INPUT_FILE';
+    }
+    if (lower.contains('salmon')) {
+      return 'salmon quant -i /ref/index -l A -r \$INPUT_FILE -p 4 -o /outputs/';
+    }
+    if (lower.contains('cutadapt')) {
+      return 'cutadapt -o /outputs/trimmed.fastq.gz \$INPUT_FILE';
+    }
+    if (lower.contains('fastp')) {
+      return 'fastp -i \$INPUT_FILE -o /outputs/trimmed.fastq.gz';
+    }
+    if (lower.contains('python')) {
+      return 'python /scripts/analysis.py --input \$INPUT_FILE --output /outputs/result.txt';
+    }
+    if (lower.contains('r-base') || lower.contains('bioconductor')) {
+      return 'Rscript /scripts/analysis.R --input \$INPUT_FILE --outdir /outputs/';
+    }
+    // Unknown image — leave blank so the placeholder guides the user
+    return null;
+  }
+
+  /// Get the full image name including tag (e.g. python:3.11)
+  String getFullImageName(PipelineNode node) {
+    if (node.dockerImage == null) return '';
+    
+    final tagParam = node.parameters.firstWhereOrNull((p) => p.key == 'tag');
+    final tag = tagParam?.value?.toString().trim() ?? 'latest';
+    
+    // If the image name already contains a colon, it might already have a tag
+    if (node.dockerImage!.contains(':')) {
+      return node.dockerImage!;
+    }
+    
+    return '${node.dockerImage}:$tag';
+  }
+
   /// Check if Docker image exists locally, pull if not
   Future<void> _checkAndPullImage(PipelineNode node) async {
-    if (node.dockerImage == null) return;
+    final fullImage = getFullImageName(node);
+    if (fullImage.isEmpty) return;
 
     try {
       // Check if image exists locally
-      final exists = await _dockerService.imageExists(node.dockerImage!);
+      final exists = await _dockerService.imageExists(fullImage);
 
       if (exists) {
         // Image is cached
@@ -520,11 +646,11 @@ class PipelineController extends GetxController {
         node.downloadStatus = 'Starting download...';
         update([node.id]); // Update only this node
 
-        print('📥 Pulling image ${node.dockerImage}...');
+        print('📥 Pulling image $fullImage...');
 
         // Listen to pull progress stream
         await for (final progress in _dockerService.pullImage(
-          node.dockerImage!,
+          fullImage,
         )) {
           node.downloadProgress = progress.percentage;
           node.downloadStatus = progress.message;
@@ -569,6 +695,131 @@ class PipelineController extends GetxController {
     final node = nodes.firstWhereOrNull((n) => n.id == nodeId);
     if (node == null) return;
 
+    // ─── Special handling: Input node (file picker — no Docker container) ──────
+    if (node.category == BlockCategory.input) {
+      setNodeStatus(nodeId, BlockStatus.running);
+      node.logs.clear();
+      update([nodeId]);
+
+      final fileParam =
+          node.parameters.firstWhereOrNull((p) => p.key == 'file_path');
+      final filePath = fileParam?.value?.toString().trim() ?? '';
+
+      if (filePath.isEmpty) {
+        node.logs.add(
+            '[ERROR] No file selected. Open the Input node parameters and choose a file.');
+        setNodeStatus(nodeId, BlockStatus.failed);
+        update([nodeId]);
+        return;
+      }
+
+      final inputFile = File(filePath);
+      if (!await inputFile.exists()) {
+        node.logs.add('[ERROR] File not found: $filePath');
+        node.logs
+            .add('[ERROR] Make sure the path is correct and the file exists.');
+        setNodeStatus(nodeId, BlockStatus.failed);
+        update([nodeId]);
+        return;
+      }
+
+      final fileBytes = await inputFile.length();
+      final sizeKb = (fileBytes / 1024).toStringAsFixed(1);
+      node.logs.add('[SYSTEM] Input file: $filePath');
+      node.logs.add('[SYSTEM] File size : $sizeKb KB ($fileBytes bytes)');
+
+      // Sanity check: FASTQ/FASTQ.gz files must be at least a few KB.
+      // A 14-byte file means the download failed (curl wrote an error or redirect).
+      final ext = filePath.toLowerCase();
+      final isBioSeqFile = ext.endsWith('.fastq') ||
+          ext.endsWith('.fastq.gz') ||
+          ext.endsWith('.fq') ||
+          ext.endsWith('.fq.gz') ||
+          ext.endsWith('.bam') ||
+          ext.endsWith('.sam') ||
+          ext.endsWith('.vcf') ||
+          ext.endsWith('.vcf.gz');
+      if (isBioSeqFile && fileBytes < 500) {
+        node.logs.add(
+            '[WARNING] ⚠️  File is suspiciously small ($fileBytes bytes) for a biological sequence file.');
+        node.logs.add(
+            '[WARNING]    This usually means the download failed or the file is empty.');
+        node.logs.add(
+            '[WARNING]    Re-download the file and verify it is a valid ${ ext.contains("fastq") ? "FASTQ" : "sequence" } file before running.');
+      }
+      node.logs.add('[SYSTEM] Passing file path to downstream nodes via volume mount.');
+
+      // Register the raw file path as output so downstream containers
+      // receive it as a volume mount at /inputs/<filename>
+      final existingOut =
+          node.parameters.firstWhereOrNull((p) => p.key == '_output_file');
+      if (existingOut != null) {
+        existingOut.value = filePath;
+      } else {
+        node.parameters.add(BlockParameter(
+          key: '_output_file',
+          label: 'Output File',
+          type: ParameterType.text,
+          value: filePath,
+        ));
+      }
+
+      setNodeStatus(nodeId, BlockStatus.success);
+      update([nodeId]);
+      return;
+    }
+
+    // ─── Special handling: Output node (save / label result — no container) ───
+    if (node.category == BlockCategory.output) {
+      setNodeStatus(nodeId, BlockStatus.running);
+      node.logs.clear();
+      update([nodeId]);
+
+      if (inputFiles == null || inputFiles.isEmpty) {
+        node.logs.add(
+            '[ERROR] Output node received no data. Connect it to an upstream node.');
+        setNodeStatus(nodeId, BlockStatus.failed);
+        update([nodeId]);
+        return;
+      }
+
+      node.logs.add('[SYSTEM] Output node received ${inputFiles.length} input(s):');
+      for (final entry in inputFiles.entries) {
+        node.logs.add('[SYSTEM]   [${entry.key}] → ${entry.value}');
+      }
+
+      // Pass through the first input path so the pipeline can chain further
+      final firstPath = inputFiles.values.first;
+      final existingOut =
+          node.parameters.firstWhereOrNull((p) => p.key == '_output_file');
+      if (existingOut != null) {
+        existingOut.value = firstPath;
+      } else {
+        node.parameters.add(BlockParameter(
+          key: '_output_file',
+          label: 'Output File',
+          type: ParameterType.text,
+          value: firstPath,
+        ));
+      }
+
+      setNodeStatus(nodeId, BlockStatus.success);
+      update([nodeId]);
+      return;
+    }
+
+    // ─── Docker container nodes ───────────────────────────────────────────────
+    final fullImage = getFullImageName(node);
+    if (fullImage.isEmpty) {
+      // Surface the error to the node log so it appears in the Execution Console
+      node.logs.add('[ERROR] No Docker image specified for "${node.title}".');
+      node.logs.add(
+          '[ERROR] Set the Docker Image field in the node parameters, then re-run.');
+      setNodeStatus(nodeId, BlockStatus.failed);
+      update([nodeId]);
+      return;
+    }
+
     try {
       setNodeStatus(nodeId, BlockStatus.running);
 
@@ -585,93 +836,232 @@ class PipelineController extends GetxController {
       final outputFile = File(outputFilePath);
       final outputSink = outputFile.openWrite();
 
-      // Parse parameters
+      // Parse parameters (fix #1.2: Robust Arg Parsing)
       final commandParam = node.parameters
           .firstWhereOrNull((p) => p.key == 'command')
           ?.value
           ?.toString();
 
-      // Use shell wrapper for commands to handle complex syntax
       List<String> command = [];
       if (commandParam != null && commandParam.isNotEmpty) {
+        // Use ShellUtils to split arguments correctly (handles quotes/spaces)
+        final parts = ShellUtils.splitArguments(commandParam);
         // Wrap command in shell to handle pipes, redirects, etc.
-        command = ['sh', '-c', commandParam];
+        command = ['sh', '-c', parts.join(' ')];
       }
 
       final volumesParam = node.parameters
           .firstWhereOrNull((p) => p.key == 'volumes')
           ?.value
           ?.toString();
-      final volumes =
-          volumesParam?.split(' ').where((s) => s.isNotEmpty).toList() ?? [];
+      final volumes = volumesParam != null
+          ? ShellUtils.splitArguments(volumesParam)
+          : <String>[];
+
+      // Fix #1.3: Windows-to-WSL path translation for volumes
+      final normalizedVolumes = volumes.map((v) {
+        if (!Platform.isWindows) return v;
+        // e.g. C:\path:/container -> /c/path:/container
+        final parts = v.split(':');
+        if (parts.length >= 2 && parts[0].length == 1) {
+          final drive = parts[0].toLowerCase();
+          final path = parts[1].replaceAll('\\', '/');
+          return '/$drive$path:${parts.sublist(2).join(':')}';
+        }
+        return v.replaceAll('\\', '/');
+      }).toList();
 
       final envParam = node.parameters
           .firstWhereOrNull((p) => p.key == 'environment')
           ?.value
           ?.toString();
-      final environment =
-          envParam?.split(' ').where((s) => s.isNotEmpty).toList() ?? [];
+      final environment = envParam != null
+          ? ShellUtils.splitArguments(envParam)
+          : <String>[];
 
       final portsParam = node.parameters
           .firstWhereOrNull((p) => p.key == 'ports')
           ?.value
           ?.toString();
-      final ports =
-          portsParam?.split(' ').where((s) => s.isNotEmpty).toList() ?? [];
+      final ports = portsParam != null
+          ? ShellUtils.splitArguments(portsParam)
+          : <String>[];
 
       // Add input files to volumes and environment
       if (inputFiles != null) {
+        bool firstInput = true;
         inputFiles.forEach((portName, filePath) {
-          final fileName = filePath.split(Platform.pathSeparator).last;
-          final containerPath = '/inputs/$fileName';
-
-          // Mount file read-only
-          volumes.add('$filePath:$containerPath:ro');
-
-          // Add env var for the input path
-          // e.g. INPUT_DATA=/inputs/data.txt
-          environment.add('INPUT_${portName.toUpperCase()}=$containerPath');
-
-          // Also add a generic INPUT_FILE var if it's the first input
-          if (environment.every((e) => !e.startsWith('INPUT_FILE='))) {
-            environment.add('INPUT_FILE=$containerPath');
+          var hostPath = filePath;
+          // Windows path normalisation
+          if (Platform.isWindows &&
+              hostPath.length >= 2 &&
+              hostPath[1] == ':') {
+            final drive = hostPath[0].toLowerCase();
+            final rest = hostPath.substring(2).replaceAll('\\', '/');
+            hostPath = '/$drive$rest';
           }
+
+          final isDirectory =
+              FileSystemEntity.isDirectorySync(filePath);
+
+          if (isDirectory) {
+            // Upstream Docker tool output dir → mount as /inputs/<dirName>
+            final dirName = filePath.split(Platform.pathSeparator).last;
+            final containerPath = '/inputs/$dirName';
+            normalizedVolumes.add('$hostPath:$containerPath:ro');
+            environment.add(
+                'INPUT_${portName.toUpperCase()}_DIR=$containerPath');
+            if (firstInput) {
+              environment.add('INPUT_DIR=$containerPath');
+            }
+          } else {
+            // Raw file (e.g. from Input node) → mount as /inputs/<fileName>
+            final fileName = filePath.split(Platform.pathSeparator).last;
+            final containerPath = '/inputs/$fileName';
+            normalizedVolumes.add('$hostPath:$containerPath:ro');
+            environment
+                .add('INPUT_${portName.toUpperCase()}=$containerPath');
+            if (firstInput &&
+                environment.every((e) => !e.startsWith('INPUT_FILE='))) {
+              environment.add('INPUT_FILE=$containerPath');
+            }
+          }
+          firstInput = false;
         });
       }
 
+      // Auto-mount /outputs/ so tools that write files (FastQC, MultiQC, etc.)
+      // have a writable directory that maps back to the workspace node folder.
+      final outputDir = File(outputFilePath).parent;
+      if (!await outputDir.exists()) {
+        await outputDir.create(recursive: true);
+      }
+      var hostOutputPath = outputDir.path;
+      if (Platform.isWindows &&
+          hostOutputPath.length >= 2 &&
+          hostOutputPath[1] == ':') {
+        final drive = hostOutputPath[0].toLowerCase();
+        final rest = hostOutputPath.substring(2).replaceAll('\\', '/');
+        hostOutputPath = '/$drive$rest';
+      }
+      normalizedVolumes.add('$hostOutputPath:/outputs');
+      environment.add('OUTPUT_DIR=/outputs');
+
+      // Fix #1.1: Platform flags for Apple Silicon
+      final platformInfo = await _dockerService.getPlatformInfo();
+      String? platformFlag;
+      if (platformInfo.needsPlatformEmulation) {
+        platformFlag = platformInfo.dockerPlatformFlag;
+      }
+
+      // Build and log the exact docker command so users can debug
+      // (written to node logs before the container starts)
+      final previewVolumes = normalizedVolumes.map((v) => '-v $v').join(' ');
+      final previewEnv = environment.map((e) => '-e $e').join(' ');
+      final previewCmd = command.isNotEmpty ? command.join(' ') : '(no command — using image entrypoint)';
+      node.logs.add('[SYSTEM] ─── Docker command ───────────────────────────');
+      node.logs.add('[SYSTEM] Image   : $fullImage');
+      node.logs.add('[SYSTEM] Volumes : $previewVolumes');
+      node.logs.add('[SYSTEM] Env     : $previewEnv');
+      node.logs.add('[SYSTEM] Command : $previewCmd');
+      node.logs.add('[SYSTEM] ────────────────────────────────────────────────');
+      update([nodeId]);
+
       final process = await _dockerService.runContainer(
-        image: node.dockerImage!,
+        image: fullImage,
         containerName: node.id,
+        platform: platformFlag,
         command: command,
-        volumes: volumes,
+        volumes: normalizedVolumes,
         environment: environment,
         ports: ports,
       );
 
-      // Stream logs and write to file
-      process.stdout.transform(utf8.decoder).listen((data) {
-        final lines = data.split('\n').where((l) => l.isNotEmpty);
-        for (final line in lines) {
-          print('🐳 [${node.title}] STDOUT: $line');
-          node.logs.add('[STDOUT] $line');
-          outputSink.writeln(line); // Write to file
-        }
-        update([node.id]); // Update UI for logs
-      });
+      // Stream logs and write to file.
+      // IMPORTANT: Use Completers to track when each stream is fully drained.
+      // Never close the sink until both onDone callbacks have fired — otherwise
+      // the last chunks buffered by the Dart event loop are lost and output.txt
+      // ends up as zero bytes even when the process produced output.
+      final stdoutDone = Completer<void>();
+      final stderrDone = Completer<void>();
 
-      process.stderr.transform(utf8.decoder).listen((data) {
-        final lines = data.split('\n').where((l) => l.isNotEmpty);
-        for (final line in lines) {
-          print('⚠️ [${node.title}] STDERR: $line');
-          node.logs.add('[STDERR] $line');
-          outputSink.writeln('[ERROR] $line'); // Write errors to file too
-        }
-        update([node.id]); // Update UI for logs
-      });
+      process.stdout.transform(utf8.decoder).listen(
+        (data) {
+          final lines = data.split('\n').where((l) => l.isNotEmpty);
+          for (final line in lines) {
+            print('🐳 [${node.title}] STDOUT: $line');
+            node.logs.add('[STDOUT] $line');
+            outputSink.writeln(line);
+          }
+          update([node.id]);
+        },
+        onDone: () {
+          if (!stdoutDone.isCompleted) stdoutDone.complete();
+        },
+        onError: (Object e) {
+          print('⚠️ [${node.title}] STDOUT stream error: $e');
+          if (!stdoutDone.isCompleted) stdoutDone.complete();
+        },
+        cancelOnError: false,
+      );
 
-      final exitCode = await process.exitCode;
+      process.stderr.transform(utf8.decoder).listen(
+        (data) {
+          final lines = data.split('\n').where((l) => l.isNotEmpty);
+          for (final line in lines) {
+            print('⚠️ [${node.title}] STDERR: $line');
+            node.logs.add('[STDERR] $line');
+            outputSink.writeln('[ERROR] $line');
+          }
+          update([node.id]);
+        },
+        onDone: () {
+          if (!stderrDone.isCompleted) stderrDone.complete();
+        },
+        onError: (Object e) {
+          print('⚠️ [${node.title}] STDERR stream error: $e');
+          if (!stderrDone.isCompleted) stderrDone.complete();
+        },
+        cancelOnError: false,
+      );
 
-      // Close the output file
+      final exitCode = await process.exitCode
+          .timeout(
+            const Duration(minutes: 120),
+            onTimeout: () {
+              node.logs.add(
+                '[ERROR] ⏰ Execution timed out after 120 minutes.'
+              );
+              node.logs.add(
+                '[ERROR]    The container was stopped automatically.'
+              );
+              node.logs.add(
+                '[ERROR]    If your data needs more time, check that your command is correct'
+              );
+              node.logs.add(
+                '[ERROR]    and that it reads from \$INPUT_FILE, not from stdin.'
+              );
+              _dockerService.stopContainer(node.id);
+              return 124; // Standard timeout exit code
+            },
+          );
+
+      // Wait for both stream listeners to fully drain before touching the sink.
+      // Give up to 30 seconds for any residual buffered output to arrive after
+      // the process exits — this is intentionally generous because large tools
+      // (FastQC, BWA) can flush megabytes of final output right at exit.
+      await Future.wait([stdoutDone.future, stderrDone.future])
+          .timeout(
+            const Duration(seconds: 30),
+            onTimeout: () {
+              print('⚠️ [${node.title}] Stream drain timed out — closing sink anyway');
+              if (!stdoutDone.isCompleted) stdoutDone.complete();
+              if (!stderrDone.isCompleted) stderrDone.complete();
+              return [];
+            },
+          );
+
+      // Now it is safe to flush and close — all writes have been committed.
       await outputSink.flush();
       await outputSink.close();
 
@@ -719,16 +1109,77 @@ class PipelineController extends GetxController {
     if (node == null) return;
 
     try {
-      print('🛑 Stopping node ${node.title}...');
-      await _dockerService.stopContainer(node.id);
-      node.logs.add('[SYSTEM] Execution stopped by user');
-      node.status = BlockStatus.failed; // Or a new 'stopped' status
+      if (node.status == BlockStatus.downloading && node.dockerImage != null) {
+        print('🛑 Stopping pull for node ${node.title}...');
+        await _dockerService.stopPull(node.dockerImage!);
+        node.downloadStatus = 'Canceled by user';
+      } else if (node.status == BlockStatus.running) {
+        print('🛑 Stopping container for node ${node.title}...');
+        await _dockerService.stopContainer(node.id);
+        node.logs.add('[SYSTEM] Execution stopped by user');
+      }
+
+      node.status = BlockStatus.failed;
       update([node.id]);
     } catch (e) {
       print('❌ Error stopping node: $e');
       node.logs.add('[SYSTEM] Error stopping: $e');
       update([node.id]);
     }
+  }
+
+  /// Returns a list of connection IDs that are part of a cycle
+  List<String> getCycleConnections() {
+    final cycleConnections = <String>{};
+    final visited = <String>{}; // Nodes visited in any DFS traversal
+    final recStack = <String>{}; // Nodes currently in the recursion stack (current path)
+    final pathNodeIds = <String>[]; // Track node IDs in the current DFS path
+    final pathConnectionIds = <String>[]; // Track connection IDs in the current DFS path
+
+    void dfs(String nodeId) {
+      visited.add(nodeId);
+      recStack.add(nodeId);
+      pathNodeIds.add(nodeId);
+
+      final outgoing = connections.where((c) => c.fromNodeId == nodeId).toList();
+      for (final conn in outgoing) {
+        pathConnectionIds.add(conn.id); // Add connection to path before exploring
+
+        if (!visited.contains(conn.toNodeId)) {
+          // Node not visited yet, recurse
+          dfs(conn.toNodeId);
+        } else if (recStack.contains(conn.toNodeId)) {
+          // Cycle detected! conn.toNodeId is an ancestor in the current path.
+          // The cycle consists of the back-edge (conn.id) and all connections
+          // in pathConnectionIds from the point where conn.toNodeId was entered
+          // into the path, up to the current connection.
+
+          // Add the back-edge itself
+          cycleConnections.add(conn.id);
+
+          // Find the index of conn.toNodeId in pathNodeIds
+          final cycleStartIndex = pathNodeIds.indexOf(conn.toNodeId);
+
+          // Add all connections from that point in pathConnectionIds
+          for (int i = cycleStartIndex; i < pathConnectionIds.length; i++) {
+            cycleConnections.add(pathConnectionIds[i]);
+          }
+        }
+        pathConnectionIds.removeLast(); // Remove connection from path after exploring
+      }
+
+      recStack.remove(nodeId); // Remove from recursion stack when leaving node
+      pathNodeIds.removeLast(); // Remove node from path when leaving
+    }
+
+    // Iterate over all nodes to ensure all disconnected components are checked
+    for (var node in nodes) {
+      if (!visited.contains(node.id)) {
+        dfs(node.id);
+      }
+    }
+
+    return cycleConnections.toList();
   }
 
   /// Returns the nodes in topological order (execution order).
@@ -914,11 +1365,21 @@ class PipelineController extends GetxController {
 
   void selectNode(String? nodeId) {
     selectedNode.value = nodeId;
+    if (nodeId != null) {
+      selectedConnectionId.value = null;
+    }
     // Update node selection state
     for (var node in nodes) {
       node.isSelected = node.id == nodeId;
     }
     nodes.refresh();
+  }
+
+  void selectConnection(String? connectionId) {
+    selectedConnectionId.value = connectionId;
+    if (connectionId != null) {
+      selectNode(null); // Deselect nodes
+    }
   }
 
   void addConnection(
@@ -942,6 +1403,9 @@ class PipelineController extends GetxController {
 
   void deleteConnection(String connectionId) {
     connections.removeWhere((c) => c.id == connectionId);
+    if (selectedConnectionId.value == connectionId) {
+      selectedConnectionId.value = null;
+    }
     _saveHistoryState();
   }
 
@@ -955,8 +1419,15 @@ class PipelineController extends GetxController {
       final param = node.parameters.firstWhereOrNull((p) => p.key == paramKey);
       if (param != null) {
         param.value = value;
+        param.isAuto = false; // Mark as manual override
         nodes.refresh();
         _saveHistoryState();
+
+        // If image or tag changed, re-verify image (fix #10)
+        if (paramKey == 'image' || paramKey == 'tag') {
+          if (paramKey == 'image') node.dockerImage = value.toString();
+          _checkAndPullImage(node);
+        }
       }
     }
   }

@@ -2,8 +2,18 @@ import 'dart:io';
 import 'package:path_provider/path_provider.dart';
 import 'package:path/path.dart' as path;
 
-/// Service to manage workspace directories for pipeline execution
+/// Service to manage workspace directories for pipeline execution.
+///
+/// This class is a singleton — every `WorkspaceService()` call returns the
+/// same instance so that all controllers share a single [_currentRunDir].
+/// Without this guarantee, [PipelineController] and [ExecutionController]
+/// would each hold their own run-directory pointer that can diverge.
 class WorkspaceService {
+  // ── Singleton boilerplate ──────────────────────────────────────────────────
+  static final WorkspaceService _instance = WorkspaceService._internal();
+  factory WorkspaceService() => _instance;
+  WorkspaceService._internal();
+  // ──────────────────────────────────────────────────────────────────────────
   static const String _workspaceDirName = 'BioFlow';
   static const String _pipelinesDirName = 'Pipelines';
   static const String _runsDirName = 'Runs';
@@ -92,6 +102,14 @@ class WorkspaceService {
     if (_currentRunDir != null && await _currentRunDir!.exists()) {
       return _currentRunDir!;
     }
+    return await createRunDirectory();
+  }
+
+  /// Reset the cached run directory so the NEXT call to [getCurrentRunDirectory]
+  /// creates a brand-new timestamped folder.  Call this at the start of every
+  /// pipeline execution so repeated runs never share a workspace directory.
+  Future<Directory> startNewRun() async {
+    _currentRunDir = null;
     return await createRunDirectory();
   }
 

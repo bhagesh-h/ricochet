@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:get/get.dart';
@@ -21,23 +22,84 @@ class _ExecutionPanelState extends State<ExecutionPanel> {
   final ScrollController _pipelineScrollCtrl = ScrollController();
   final ScrollController _nodeScrollCtrl = ScrollController();
 
+  // ── Elapsed time ──────────────────────────────────────────────────────────
+  Timer? _elapsedTimer;
+  DateTime? _runStartTime;
+  int _elapsedSeconds = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _pipelineScrollCtrl.addListener(() => _onScroll(_pipelineScrollCtrl));
+    _nodeScrollCtrl.addListener(() => _onScroll(_nodeScrollCtrl));
+
+    // Listen for pipeline start / stop to drive the elapsed timer.
+    ever(execCtrl.isRunning, (bool running) {
+      if (running) {
+        _runStartTime = DateTime.now();
+        _elapsedSeconds = 0;
+        _elapsedTimer?.cancel();
+        _elapsedTimer = Timer.periodic(const Duration(seconds: 1), (_) {
+          if (mounted) {
+            setState(() {
+              _elapsedSeconds =
+                  DateTime.now().difference(_runStartTime!).inSeconds;
+            });
+          }
+        });
+      } else {
+        _elapsedTimer?.cancel();
+        _elapsedTimer = null;
+      }
+    });
+  }
+
   @override
   void dispose() {
+    _elapsedTimer?.cancel();
     _pipelineScrollCtrl.dispose();
     _nodeScrollCtrl.dispose();
     super.dispose();
   }
 
+  String get _elapsedLabel {
+    if (_elapsedSeconds < 60) return '${_elapsedSeconds}s';
+    final m = _elapsedSeconds ~/ 60;
+    final s = (_elapsedSeconds % 60).toString().padLeft(2, '0');
+    return '${m}m ${s}s';
+  }
+
+  bool _shouldAutoScroll = true;
+
   void _scrollToBottom(ScrollController ctrl) {
+    if (!_shouldAutoScroll) return;
+
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (ctrl.hasClients) {
-        ctrl.animateTo(
-          ctrl.position.maxScrollExtent,
-          duration: const Duration(milliseconds: 200),
-          curve: Curves.easeOut,
-        );
+        final maxScroll = ctrl.position.maxScrollExtent;
+        final currentScroll = ctrl.offset;
+        
+        // Only scroll if we are reasonably close to the bottom 
+        // OR if the user is already at the bottom
+        if (maxScroll - currentScroll < 100 || currentScroll == 0) {
+           ctrl.animateTo(
+            maxScroll,
+            duration: const Duration(milliseconds: 300),
+            curve: Curves.easeOutCubic,
+          );
+        }
       }
     });
+  }
+
+  // Handle manual scroll to toggle auto-scroll
+  void _onScroll(ScrollController ctrl) {
+    if (ctrl.hasClients) {
+      final isAtBottom = ctrl.offset >= ctrl.position.maxScrollExtent - 50;
+      if (_shouldAutoScroll != isAtBottom) {
+        setState(() => _shouldAutoScroll = isAtBottom);
+      }
+    }
   }
 
   void _copyToClipboard(List<String> logs) {
@@ -138,7 +200,7 @@ class _ExecutionPanelState extends State<ExecutionPanel> {
                     const SizedBox(width: 8),
                     Text(
                       showNodeLogs
-                          ? 'Execution Logs: ${selectedNode!.title}'
+                          ? 'Execution Logs: ${selectedNode.title}'
                           : 'Execution Console',
                       style: const TextStyle(
                         color: Colors.white,
@@ -205,40 +267,58 @@ class _ExecutionPanelState extends State<ExecutionPanel> {
                       const SizedBox(width: 8),
                     ],
 
-                    // Running indicator
-                    if (showNodeLogs &&
-                        selectedNode!.status == BlockStatus.running)
+                    // Running indicator with elapsed time
+                    if (execCtrl.isRunning.value)
                       Container(
                         margin: const EdgeInsets.only(right: 12),
                         padding: const EdgeInsets.symmetric(
-                            horizontal: 8, vertical: 2),
+                            horizontal: 8, vertical: 4),
                         decoration: BoxDecoration(
-                          color: const Color(0xFF10B981).withValues(alpha: 0.2),
-                          borderRadius: BorderRadius.circular(4),
+                          color: const Color(0xFF10B981).withValues(alpha: 0.15),
+                          borderRadius: BorderRadius.circular(6),
                           border: Border.all(
                               color: const Color(0xFF10B981)
-                                  .withValues(alpha: 0.3)),
+                                  .withValues(alpha: 0.4)),
                         ),
                         child: Row(
-                          children: const [
-                            SizedBox(
-                              width: 8,
-                              height: 8,
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const SizedBox(
+                              width: 9,
+                              height: 9,
                               child: CircularProgressIndicator(
                                 strokeWidth: 2,
                                 valueColor: AlwaysStoppedAnimation<Color>(
                                     Color(0xFF10B981)),
                               ),
                             ),
-                            SizedBox(width: 6),
-                            Text(
+                            const SizedBox(width: 6),
+                            const Text(
                               'Running',
                               style: TextStyle(
-                                fontSize: 10,
+                                fontSize: 11,
                                 color: Color(0xFF10B981),
                                 fontWeight: FontWeight.bold,
                               ),
                             ),
+                            if (_elapsedSeconds > 0) ...[
+                              const SizedBox(width: 6),
+                              Container(
+                                width: 1,
+                                height: 10,
+                                color: const Color(0xFF10B981)
+                                    .withValues(alpha: 0.4),
+                              ),
+                              const SizedBox(width: 6),
+                              Text(
+                                _elapsedLabel,
+                                style: const TextStyle(
+                                  fontSize: 11,
+                                  color: Color(0xFF6EE7B7),
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              ),
+                            ],
                           ],
                         ),
                       ),
@@ -246,7 +326,7 @@ class _ExecutionPanelState extends State<ExecutionPanel> {
                     // ── Copy to clipboard (fix #9) ──────────────────────
                     IconButton(
                       onPressed: () {
-                        if (showNodeLogs && selectedNode != null) {
+                        if (showNodeLogs) {
                           _copyToClipboard(selectedNode.logs);
                         } else {
                           _copyToClipboard(execCtrl.log.toList());
@@ -296,9 +376,28 @@ class _ExecutionPanelState extends State<ExecutionPanel> {
 
               // Content
               Expanded(
-                child: showNodeLogs
-                    ? _buildNodeLogs(selectedNode!)
-                    : _buildPipelineLogs(),
+                child: Stack(
+                  children: [
+                    showNodeLogs
+                        ? _buildNodeLogs(selectedNode)
+                        : _buildPipelineLogs(),
+                    
+                    // Floating "Scroll to bottom" button if auto-scroll is paused
+                    if (!_shouldAutoScroll)
+                      Positioned(
+                        right: 20,
+                        bottom: 20,
+                        child: FloatingActionButton.small(
+                          onPressed: () {
+                            setState(() => _shouldAutoScroll = true);
+                            _scrollToBottom(showNodeLogs ? _nodeScrollCtrl : _pipelineScrollCtrl);
+                          },
+                          backgroundColor: const Color(0xFF6366F1),
+                          child: const Icon(Icons.arrow_downward, size: 18),
+                        ),
+                      ),
+                  ],
+                ),
               ),
             ],
           ),
@@ -315,10 +414,43 @@ class _ExecutionPanelState extends State<ExecutionPanel> {
         _scrollToBottom(_nodeScrollCtrl);
 
         if (node.logs.isEmpty) {
-          return const Center(
-            child: Text(
-              'Waiting for logs...',
-              style: TextStyle(color: Color(0xFF64748B), fontSize: 12),
+          return Center(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                const SizedBox(
+                  width: 28,
+                  height: 28,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2.5,
+                    valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF6366F1)),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                const Text(
+                  'Container is running...',
+                  style: TextStyle(
+                    color: Color(0xFF94A3B8),
+                    fontSize: 13,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  'Elapsed: $_elapsedLabel',
+                  style: const TextStyle(
+                    color: Color(0xFF6EE7B7),
+                    fontSize: 12,
+                    fontFamily: 'monospace',
+                  ),
+                ),
+                const SizedBox(height: 10),
+                const Text(
+                  'Logs will appear here when the container produces output.',
+                  style: TextStyle(color: Color(0xFF475569), fontSize: 11),
+                  textAlign: TextAlign.center,
+                ),
+              ],
             ),
           );
         }

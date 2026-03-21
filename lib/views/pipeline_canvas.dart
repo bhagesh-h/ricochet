@@ -36,8 +36,6 @@ class _PipelineCanvasState extends State<PipelineCanvas>
   Offset? _dragCurrentPoint;
   String? _dragSourceNodeId;
 
-  // For connection hover / click-to-delete
-  String? _hoveredConnectionId;
 
   @override
   void initState() {
@@ -82,8 +80,7 @@ class _PipelineCanvasState extends State<PipelineCanvas>
       child: GestureDetector(
         // Tap on empty canvas → deselect node & hovered connection
         onTap: () {
-          controller.selectNode(null);
-          setState(() => _hoveredConnectionId = null);
+          controller.deselectAll();
           _focusNode.requestFocus();
         },
         child: Container(
@@ -224,18 +221,16 @@ class _PipelineCanvasState extends State<PipelineCanvas>
         ctrl.deleteNode(ctrl.selectedNode.value!);
         return KeyEventResult.handled;
       }
-      // Delete hovered connection
-      if (_hoveredConnectionId != null) {
-        ctrl.deleteConnection(_hoveredConnectionId!);
-        setState(() => _hoveredConnectionId = null);
+      // Delete selected connection (fix #2.2)
+      if (ctrl.selectedConnectionId.value != null) {
+        ctrl.deleteConnection(ctrl.selectedConnectionId.value!);
         return KeyEventResult.handled;
       }
     }
 
     // Escape → deselect
     if (event.logicalKey == LogicalKeyboardKey.escape) {
-      ctrl.selectNode(null);
-      setState(() => _hoveredConnectionId = null);
+      ctrl.deselectAll();
       return KeyEventResult.handled;
     }
 
@@ -253,7 +248,8 @@ class _PipelineCanvasState extends State<PipelineCanvas>
           painter: ConnectionPainter(
             nodes: controller.nodes.toList(),
             connections: controller.connections.toList(),
-            hoveredConnectionId: _hoveredConnectionId,
+            selectedConnectionId: controller.selectedConnectionId.value,
+            cycleConnectionIds: controller.cycleConnectionIds.toList(),
           ),
         ),
       );
@@ -291,7 +287,7 @@ class _PipelineCanvasState extends State<PipelineCanvas>
     }
 
     if (hitId != null) {
-      setState(() => _hoveredConnectionId = hitId);
+      ctrl.selectConnection(hitId);
       // Show delete prompt
       Get.snackbar(
         'Connection Selected',
@@ -303,14 +299,13 @@ class _PipelineCanvasState extends State<PipelineCanvas>
         mainButton: TextButton(
           onPressed: () {
             ctrl.deleteConnection(hitId!);
-            setState(() => _hoveredConnectionId = null);
             Get.closeCurrentSnackbar();
           },
           child: const Text('DELETE', style: TextStyle(color: Color(0xFFEF4444), fontWeight: FontWeight.bold)),
         ),
       );
     } else {
-      setState(() => _hoveredConnectionId = null);
+      ctrl.selectConnection(null);
     }
   }
 

@@ -311,23 +311,28 @@ class _PipelineBlockWidgetState extends State<PipelineBlockWidget>
             child: GetBuilder<PipelineController>(
               id: widget.node.id,
               builder: (_) {
-                // Show Stop button if running
-                if (widget.node.status == BlockStatus.running) {
-                  return InkWell(
-                    onTap: () {
-                      Get.find<PipelineController>().stopNode(widget.node.id);
-                    },
-                    child: Container(
-                      width: 24,
-                      height: 24,
-                      decoration: BoxDecoration(
-                        color: Colors.red.withOpacity(0.1),
-                        shape: BoxShape.circle,
-                      ),
-                      child: const Icon(
-                        Icons.stop_rounded,
-                        color: Colors.red,
-                        size: 16,
+                // Show Stop button if running or downloading
+                if (widget.node.status == BlockStatus.running || 
+                    widget.node.status == BlockStatus.downloading) {
+                  final isPull = widget.node.status == BlockStatus.downloading;
+                  return Tooltip(
+                    message: isPull ? 'Cancel Pull' : 'Stop Execution',
+                    child: InkWell(
+                      onTap: () {
+                        Get.find<PipelineController>().stopNode(widget.node.id);
+                      },
+                      child: Container(
+                        width: 24,
+                        height: 24,
+                        decoration: BoxDecoration(
+                          color: Colors.red.withOpacity(0.1),
+                          shape: BoxShape.circle,
+                        ),
+                        child: Icon(
+                          isPull ? Icons.close_rounded : Icons.stop_rounded,
+                          color: Colors.red,
+                          size: 16,
+                        ),
                       ),
                     ),
                   );

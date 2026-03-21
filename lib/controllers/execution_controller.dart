@@ -1,6 +1,9 @@
+import 'dart:async';
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import '../models/pipeline_node.dart';
+import '../services/workspace_service.dart';
 import 'pipeline_controller.dart';
 
 class ExecutionController extends GetxController {
@@ -72,7 +75,13 @@ class ExecutionController extends GetxController {
             .firstWhereOrNull((p) => p.key == 'command');
         final command = commandParam?.value?.toString().trim() ?? '';
         if (command.isEmpty) {
-          errors.add('⚠️ Node "${node.title}": Command field is empty.');
+          final example = _getExampleCommand(node.dockerImage ?? node.title);
+          errors.add(
+            '⚠️ Node "${node.title}": Command field is empty.\n'
+            '   Your input file is available as \$INPUT_FILE inside the container.\n'
+            '   Output directory is /outputs/ (mapped to your workspace folder).\n'
+            '   Example command:  $example',
+          );
         }
         // Check image still set
         final imageParam = node.parameters
@@ -107,6 +116,13 @@ class ExecutionController extends GetxController {
 
     // --- Validate before running ---
     final errors = validatePipeline();
+    // Check for cycles (fix #2.3)
+    final pipelineCtrl = Get.find<PipelineController>();
+    if (pipelineCtrl.cycleConnectionIds.isNotEmpty) {
+      errors.add(
+          'Pipeline contains cycles (loops). BioFlow only supports Directed Acyclic Graphs (DAGs).');
+    }
+
     if (errors.isNotEmpty) {
       Get.dialog(
         AlertDialog(
@@ -161,6 +177,12 @@ class ExecutionController extends GetxController {
     showPanel.value = true; // Show panel when running
     final pipelineCtrl = Get.find<PipelineController>();
 
+    // Create a fresh run directory for every execution.  This prevents outputs
+    // from different runs sharing the same folder, which would leave stale
+    // output.txt files from a prior aborted run appearing as the current result.
+    final runDir = await WorkspaceService().startNewRun();
+    _addLog(tabId, '📂 Run workspace: ${runDir.path}');
+
     _addLog(tabId, '🚀 Pipeline execution started');
     _addLog(tabId, '📊 Found ${pipelineCtrl.nodes.length} blocks');
     _addLog(tabId, '🔗 Found ${pipelineCtrl.connections.length} connections');
@@ -207,10 +229,23 @@ class ExecutionController extends GetxController {
       _addLog(tabId, '   📂 Category: ${node.category.name}');
 
       for (var param in node.parameters) {
+        // Skip internal runtime params from clutter
+        if (param.key.startsWith('_')) continue;
         if (param.value != null && param.value.toString().isNotEmpty) {
           _addLog(tabId, '   ⚙️ ${param.label}: ${param.value}');
         }
       }
+
+      // ── Heartbeat: log elapsed time every 10 s so the user knows
+      // the container is still alive during long-running bioinformatics jobs.
+      final _nodeStart = DateTime.now();
+      Timer? _heartbeat;
+      _heartbeat = Timer.periodic(const Duration(seconds: 10), (_) {
+        final elapsed = DateTime.now().difference(_nodeStart);
+        final mm = elapsed.inMinutes.toString().padLeft(2, '0');
+        final ss = (elapsed.inSeconds % 60).toString().padLeft(2, '0');
+        _addLog(tabId, '   ⏱️  Still running... $mm:$ss elapsed');
+      });
 
       // Prepare input files from upstream nodes
       final inputFiles = <String, String>{};
@@ -221,18 +256,29 @@ class ExecutionController extends GetxController {
         final upstreamNodeId = connection.fromNodeId;
         if (nodeOutputs.containsKey(upstreamNodeId)) {
           // Use the port name as the key, or default to 'input'
-          // If multiple inputs, we might need unique keys
           final key = connection.toPort.isNotEmpty
               ? connection.toPort
               : 'input_${upstreamNodeId.substring(0, 4)}';
-          inputFiles[key] = nodeOutputs[upstreamNodeId]!;
-          _addLog(tabId,
-              '   📥 Input from ${pipelineCtrl.nodes.firstWhere((n) => n.id == upstreamNodeId).title}');
+          final filePath = nodeOutputs[upstreamNodeId]!;
+          inputFiles[key] = filePath;
+          final upstreamTitle = pipelineCtrl.nodes
+              .firstWhere((n) => n.id == upstreamNodeId)
+              .title;
+          _addLog(tabId, '   📥 Input from "$upstreamTitle"');
+          _addLog(tabId, '      Host path : $filePath');
+          final fileName = filePath.split(Platform.pathSeparator).last;
+          _addLog(tabId, '      In-container: /inputs/$fileName  (\$INPUT_FILE)');
         }
       }
 
       // Execute the node using the real pipeline controller logic
       await pipelineCtrl.executeNode(node.id, inputFiles: inputFiles);
+      _heartbeat.cancel();
+      _heartbeat = null;
+      final totalElapsed = DateTime.now().difference(_nodeStart);
+      final mm = totalElapsed.inMinutes.toString().padLeft(2, '0');
+      final ss = (totalElapsed.inSeconds % 60).toString().padLeft(2, '0');
+      _addLog(tabId, '   ⏱️  Finished in $mm:$ss');
 
       // Check status after execution
       if (node.status == BlockStatus.success) {
@@ -245,19 +291,69 @@ class ExecutionController extends GetxController {
 
         if (outputParam?.value != null) {
           final path = outputParam!.value.toString();
-          _addLog(tabId, '   📁 Output: $path');
 
-          // Store output for downstream nodes
-          nodeOutputs[node.id] = path;
+          // Input nodes store the raw file path; Docker tool nodes store
+          // output.txt inside the output dir — downstream gets the directory.
+          final isInputNode = node.category == BlockCategory.input;
+          final isOutputNode = node.category == BlockCategory.output;
+
+          if (isInputNode || isOutputNode) {
+            // Pass the exact file path so the next container mounts
+            // /Users/.../sample.fastq.gz  →  /inputs/sample.fastq.gz  ✅
+            _addLog(tabId, '   📄 File: $path');
+            nodeOutputs[node.id] = path;
+          } else {
+            // Docker tool nodes: pass their output directory so downstream
+            // tools can access all generated files (HTML, ZIP, BAM…).
+            final outDir = File(path).parent;
+            _addLog(tabId, '   📁 Output folder: ${outDir.path}');
+
+            try {
+              final produced = await outDir
+                  .list()
+                  .where((e) => e is File)
+                  .cast<File>()
+                  .toList();
+              if (produced.isNotEmpty) {
+                _addLog(tabId, '   📄 Files produced:');
+                for (final f in produced) {
+                  final kb = (await f.length() / 1024).toStringAsFixed(1);
+                  _addLog(tabId,
+                      '      ${f.uri.pathSegments.last}  ($kb KB)');
+                }
+              } else {
+                _addLog(tabId,
+                    '   ℹ️  No files found in output folder. '
+                    'Make sure your command writes to /outputs/.');
+              }
+            } catch (_) {}
+
+            nodeOutputs[node.id] = outDir.path;
+          }
         }
       } else {
         _addLog(tabId, '   ❌ Execution failed');
-        // Add last few lines of error logs if available
-        final errorLogs = node.logs
-            .where((l) => l.contains('STDERR') || l.contains('Error'))
-            .take(3);
-        for (final err in errorLogs) {
-          _addLog(tabId, '   $err');
+        // Surface ALL captured stderr/error lines to the execution console
+        final stderrLines = node.logs
+            .where((l) => l.startsWith('[STDERR]') || l.startsWith('[ERROR]'))
+            .toList();
+        final stdoutLines = node.logs
+            .where((l) => l.startsWith('[STDOUT]') || l.startsWith('[SYSTEM]'))
+            .take(3)
+            .toList();
+        // Prefer stderr; fall back to last few stdout lines if no stderr captured
+        final logsToShow =
+            stderrLines.isNotEmpty ? stderrLines : stdoutLines;
+        for (final line in logsToShow.take(20)) {
+          _addLog(tabId, '   $line');
+        }
+        if (logsToShow.length > 20) {
+          _addLog(tabId,
+              '   ... (+${logsToShow.length - 20} more lines — check node logs for full output)');
+        }
+        if (logsToShow.isEmpty) {
+          _addLog(tabId,
+              '   (No output captured. The container may have exited immediately or the command was empty.)');
         }
 
         // Stop pipeline on failure
@@ -281,6 +377,57 @@ class ExecutionController extends GetxController {
     }
 
     _setRunning(tabId, false);
+  }
+
+  /// Returns a suggested example command for a known bioinformatics image.
+  /// Used in validation error messages so the user knows what to type.
+  String _getExampleCommand(String imageName) {
+    final lower = imageName.toLowerCase();
+    if (lower.contains('fastqc')) {
+      return 'fastqc \$INPUT_FILE --outdir /outputs/';
+    }
+    if (lower.contains('trimmomatic')) {
+      return 'trimmomatic SE \$INPUT_FILE /outputs/trimmed.fastq.gz '
+          'LEADING:3 TRAILING:3 SLIDINGWINDOW:4:15 MINLEN:36';
+    }
+    if (lower.contains('bwa')) {
+      return 'bwa mem /ref/genome.fa \$INPUT_FILE -o /outputs/aligned.sam';
+    }
+    if (lower.contains('samtools')) {
+      return 'samtools view -bS \$INPUT_FILE -o /outputs/output.bam';
+    }
+    if (lower.contains('star')) {
+      return 'STAR --runMode alignReads --genomeDir /ref '
+          '--readFilesIn \$INPUT_FILE --outFileNamePrefix /outputs/';
+    }
+    if (lower.contains('gatk')) {
+      return 'gatk HaplotypeCaller -I \$INPUT_FILE -O /outputs/variants.vcf';
+    }
+    if (lower.contains('multiqc')) {
+      return 'multiqc /inputs/ -o /outputs/';
+    }
+    if (lower.contains('hisat')) {
+      return 'hisat2 -x /ref/index -U \$INPUT_FILE -S /outputs/aligned.sam';
+    }
+    if (lower.contains('bowtie')) {
+      return 'bowtie2 -x /ref/index -U \$INPUT_FILE -S /outputs/aligned.sam';
+    }
+    if (lower.contains('kallisto')) {
+      return 'kallisto quant -i /ref/index.idx -o /outputs/ \$INPUT_FILE';
+    }
+    if (lower.contains('salmon')) {
+      return 'salmon quant -i /ref/index -l A -r \$INPUT_FILE -p 4 -o /outputs/';
+    }
+    if (lower.contains('cutadapt') || lower.contains('fastp')) {
+      return 'fastp -i \$INPUT_FILE -o /outputs/trimmed.fastq.gz';
+    }
+    if (lower.contains('python')) {
+      return 'python /scripts/analysis.py --input \$INPUT_FILE --output /outputs/result.txt';
+    }
+    if (lower.contains('r-base') || lower.contains('bioconductor')) {
+      return 'Rscript /scripts/analysis.R --input \$INPUT_FILE --outdir /outputs/';
+    }
+    return 'your-tool \$INPUT_FILE -o /outputs/output.txt';
   }
 
   void clearLog() {

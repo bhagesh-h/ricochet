@@ -17,7 +17,7 @@ class _ToolSidebarState extends State<ToolSidebar> {
   final TextEditingController _searchTextController = TextEditingController();
   final FocusNode _searchFocusNode = FocusNode();
 
-  // Built-in I/O nodes only — all other tools come from Docker Hub search
+  // Built-in tools and bioinformatics library
   final List<Map<String, dynamic>> tools = const [
     {
       'name': 'Input',
@@ -37,6 +37,42 @@ class _ToolSidebarState extends State<ToolSidebar> {
       'bgColor': Color(0xFFEFF6FF),
       'dockerId': null,
     },
+    // {
+    //   'name': 'FastQC',
+    //   'category': 'Bioinformatics',
+    //   'description': 'Quality control for sequencing data',
+    //   'icon': Icons.analytics_rounded,
+    //   'color': Color(0xFF10B981),
+    //   'bgColor': Color(0xFFF0FDF4),
+    //   'dockerId': null,
+    // },
+    // {
+    //   'name': 'STAR',
+    //   'category': 'Bioinformatics',
+    //   'description': 'Spliced alignment to reference',
+    //   'icon': Icons.biotech_rounded,
+    //   'color': Color(0xFF8B5CF6),
+    //   'bgColor': Color(0xFFFAF5FF),
+    //   'dockerId': null,
+    // },
+    // {
+    //   'name': 'Samtools',
+    //   'category': 'Bioinformatics',
+    //   'description': 'Process SAM/BAM alignments',
+    //   'icon': Icons.transform_rounded,
+    //   'color': Color(0xFFF59E0B),
+    //   'bgColor': Color(0xFFFFFBEB),
+    //   'dockerId': null,
+    // },
+    // {
+    //   'name': 'BWA',
+    //   'category': 'Bioinformatics',
+    //   'description': 'Short-read alignment',
+    //   'icon': Icons.compare_arrows_rounded,
+    //   'color': Color(0xFF10B981),
+    //   'bgColor': Color(0xFFF0FDF4),
+    //   'dockerId': null,
+    // },
   ];
 
   @override
@@ -73,9 +109,7 @@ class _ToolSidebarState extends State<ToolSidebar> {
       width: 320,
       decoration: const BoxDecoration(
         color: Colors.white,
-        border: Border(
-          right: BorderSide(color: Color(0xFFE2E8F0)),
-        ),
+        border: Border(right: BorderSide(color: Color(0xFFE2E8F0))),
         boxShadow: [
           BoxShadow(
             color: Color(0x08000000),
@@ -94,14 +128,9 @@ class _ToolSidebarState extends State<ToolSidebar> {
               gradient: LinearGradient(
                 begin: Alignment.topLeft,
                 end: Alignment.bottomRight,
-                colors: [
-                  Color(0xFFF8FAFC),
-                  Color(0xFFE2E8F0),
-                ],
+                colors: [Color(0xFFF8FAFC), Color(0xFFE2E8F0)],
               ),
-              border: Border(
-                bottom: BorderSide(color: Color(0xFFE2E8F0)),
-              ),
+              border: Border(bottom: BorderSide(color: Color(0xFFE2E8F0))),
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -152,9 +181,7 @@ class _ToolSidebarState extends State<ToolSidebar> {
           Container(
             padding: const EdgeInsets.all(16),
             decoration: const BoxDecoration(
-              border: Border(
-                bottom: BorderSide(color: Color(0xFFE2E8F0)),
-              ),
+              border: Border(bottom: BorderSide(color: Color(0xFFE2E8F0))),
             ),
             child: Row(
               children: [
@@ -236,8 +263,9 @@ class _ToolSidebarState extends State<ToolSidebar> {
                           textAlign: TextAlign.center,
                         ),
                         const SizedBox(height: 8),
-                        if (_searchController.errorMessage.value
-                            .contains('Network error'))
+                        if (_searchController.errorMessage.value.contains(
+                          'Network error',
+                        ))
                           const Text(
                             'Please ensure the app has internet permissions\nand try restarting the app',
                             style: TextStyle(
@@ -275,34 +303,39 @@ class _ToolSidebarState extends State<ToolSidebar> {
     final items = <Widget>[];
     grouped.forEach((category, catTools) {
       // Category header
-      items.add(Padding(
-        padding: const EdgeInsets.fromLTRB(4, 16, 4, 8),
-        child: Text(
-          category.toUpperCase(),
-          style: const TextStyle(
-            fontSize: 10,
-            fontWeight: FontWeight.w700,
-            color: Color(0xFF94A3B8),
-            letterSpacing: 1.2,
+      items.add(
+        Padding(
+          padding: const EdgeInsets.fromLTRB(4, 16, 4, 8),
+          child: Text(
+            category.toUpperCase(),
+            style: const TextStyle(
+              fontSize: 10,
+              fontWeight: FontWeight.w700,
+              color: Color(0xFF94A3B8),
+              letterSpacing: 1.2,
+            ),
           ),
         ),
-      ));
+      );
       for (final tool in catTools) {
         // Use dockerId as drag data for Docker-based tools, tool name for builtins
-        final dragData = (tool['dockerId'] as String?) ?? (tool['name'] as String);
-        items.add(Container(
-          margin: const EdgeInsets.only(bottom: 8),
-          child: Draggable<String>(
-            data: dragData,
-            feedback: Material(
-              elevation: 12,
-              borderRadius: BorderRadius.circular(16),
-              child: _buildToolCard(tool, isDragging: true),
+        final dragData =
+            (tool['dockerId'] as String?) ?? (tool['name'] as String);
+        items.add(
+          Container(
+            margin: const EdgeInsets.only(bottom: 8),
+            child: Draggable<String>(
+              data: dragData,
+              feedback: Material(
+                elevation: 12,
+                borderRadius: BorderRadius.circular(16),
+                child: _buildToolCard(tool, isDragging: true),
+              ),
+              childWhenDragging: _buildToolCard(tool, isGhost: true),
+              child: _buildToolCard(tool),
             ),
-            childWhenDragging: _buildToolCard(tool, isGhost: true),
-            child: _buildToolCard(tool),
           ),
-        ));
+        );
       }
     });
 
@@ -320,11 +353,7 @@ class _ToolSidebarState extends State<ToolSidebar> {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(
-              Icons.search_off,
-              size: 48,
-              color: Color(0xFFCBD5E1),
-            ),
+            Icon(Icons.search_off, size: 48, color: Color(0xFFCBD5E1)),
             SizedBox(height: 12),
             Text(
               'No Docker images found',
@@ -336,10 +365,7 @@ class _ToolSidebarState extends State<ToolSidebar> {
             ),
             Text(
               'Try a different search term',
-              style: TextStyle(
-                color: Color(0xFF94A3B8),
-                fontSize: 12,
-              ),
+              style: TextStyle(color: Color(0xFF94A3B8), fontSize: 12),
             ),
           ],
         ),
@@ -368,8 +394,11 @@ class _ToolSidebarState extends State<ToolSidebar> {
     );
   }
 
-  Widget _buildToolCard(Map<String, dynamic> tool,
-      {bool isDragging = false, bool isGhost = false}) {
+  Widget _buildToolCard(
+    Map<String, dynamic> tool, {
+    bool isDragging = false,
+    bool isGhost = false,
+  }) {
     final primaryColor = tool['color'] as Color;
     final backgroundColor = tool['bgColor'] as Color;
 
@@ -380,8 +409,9 @@ class _ToolSidebarState extends State<ToolSidebar> {
         color: isGhost ? Colors.white.withOpacity(0.5) : Colors.white,
         borderRadius: BorderRadius.circular(12),
         border: Border.all(
-          color:
-              isGhost ? const Color(0xFFE2E8F0) : primaryColor.withOpacity(0.2),
+          color: isGhost
+              ? const Color(0xFFE2E8F0)
+              : primaryColor.withOpacity(0.2),
           width: 1,
         ),
         boxShadow: isDragging
@@ -467,12 +497,17 @@ class _ToolSidebarState extends State<ToolSidebar> {
     );
   }
 
-  Widget _buildDockerImageCard(DockerImage image,
-      {bool isDragging = false, bool isGhost = false}) {
-    final color =
-        image.isOfficial ? const Color(0xFF10B981) : const Color(0xFF6366F1);
-    final bgColor =
-        image.isOfficial ? const Color(0xFFF0FDF4) : const Color(0xFFF0F9FF);
+  Widget _buildDockerImageCard(
+    DockerImage image, {
+    bool isDragging = false,
+    bool isGhost = false,
+  }) {
+    final color = image.isOfficial
+        ? const Color(0xFF10B981)
+        : const Color(0xFF6366F1);
+    final bgColor = image.isOfficial
+        ? const Color(0xFFF0FDF4)
+        : const Color(0xFFF0F9FF);
 
     return Container(
       width: isDragging ? 280 : double.infinity,
@@ -510,8 +545,9 @@ class _ToolSidebarState extends State<ToolSidebar> {
               color: isGhost ? const Color(0xFFE2E8F0) : bgColor,
               borderRadius: BorderRadius.circular(12),
               border: Border.all(
-                color:
-                    isGhost ? const Color(0xFFCBD5E1) : color.withOpacity(0.2),
+                color: isGhost
+                    ? const Color(0xFFCBD5E1)
+                    : color.withOpacity(0.2),
               ),
             ),
             child: Icon(
@@ -545,7 +581,9 @@ class _ToolSidebarState extends State<ToolSidebar> {
                       const SizedBox(width: 8),
                       Container(
                         padding: const EdgeInsets.symmetric(
-                            horizontal: 6, vertical: 2),
+                          horizontal: 6,
+                          vertical: 2,
+                        ),
                         decoration: BoxDecoration(
                           color: const Color(0xFF10B981).withOpacity(0.1),
                           borderRadius: BorderRadius.circular(4),
@@ -560,6 +598,18 @@ class _ToolSidebarState extends State<ToolSidebar> {
                         ),
                       ),
                     ],
+                    const SizedBox(width: 8),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                      decoration: BoxDecoration(
+                        color: Colors.blue.withOpacity(0.1),
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                      child: const Text(
+                        'AUTO-TAG',
+                        style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: Colors.blue),
+                      ),
+                    ),
                   ],
                 ),
                 const SizedBox(height: 4),
@@ -606,11 +656,7 @@ class _ToolSidebarState extends State<ToolSidebar> {
                 color: color.withOpacity(0.1),
                 borderRadius: BorderRadius.circular(6),
               ),
-              child: Icon(
-                Icons.drag_indicator,
-                color: color,
-                size: 16,
-              ),
+              child: Icon(Icons.drag_indicator, color: color, size: 16),
             ),
         ],
       ),

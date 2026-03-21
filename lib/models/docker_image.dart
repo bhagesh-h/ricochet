@@ -80,6 +80,7 @@ class DockerTag {
   final String? architecture;
   final String? os;
   final String? digest;
+  final DateTime lastUpdated;
 
   DockerTag({
     required this.name,
@@ -87,6 +88,7 @@ class DockerTag {
     this.architecture,
     this.os,
     this.digest,
+    required this.lastUpdated,
   });
 
   factory DockerTag.fromJson(Map<String, dynamic> json) {
@@ -96,8 +98,40 @@ class DockerTag {
       architecture: json['architecture'],
       os: json['os'],
       digest: json['digest'],
+      lastUpdated: json['last_updated'] != null
+          ? DateTime.parse(json['last_updated'])
+          : DateTime.now(),
     );
   }
+}
+
+enum TagFetchStatus { success, empty, failed }
+
+class TagFetchResult {
+  final TagFetchStatus status;
+  final List<DockerTag> tags;
+  final String? errorMessage;
+
+  TagFetchResult({
+    required this.status,
+    required this.tags,
+    this.errorMessage,
+  });
+}
+
+class TagCacheEntry {
+  final List<DockerTag> tags;
+  final DateTime fetchedAt;
+  final bool isFullFetch;
+
+  TagCacheEntry({
+    required this.tags,
+    required this.fetchedAt,
+    this.isFullFetch = false,
+  });
+
+  bool get isExpired =>
+      DateTime.now().difference(fetchedAt) > const Duration(minutes: 60);
 }
 
 class DockerTagsResponse {

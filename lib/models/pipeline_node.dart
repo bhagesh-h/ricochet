@@ -60,6 +60,7 @@ class BlockParameter {
   final List<String>? options;
   final String? placeholder;
   final bool required;
+  bool isAuto;
 
   BlockParameter({
     String? id,
@@ -70,6 +71,7 @@ class BlockParameter {
     this.options,
     this.placeholder,
     this.required = false,
+    this.isAuto = false,
   }) : id = id ?? DateTime.now().millisecondsSinceEpoch.toString();
 
   factory BlockParameter.fromJson(Map<String, dynamic> json) => _$BlockParameterFromJson(json);

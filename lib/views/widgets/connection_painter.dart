@@ -7,12 +7,14 @@ import '../../models/pipeline_node.dart';
 class ConnectionPainter extends CustomPainter {
   final List<PipelineNode> nodes;
   final List<Connection> connections;
-  final String? hoveredConnectionId;
+  final String? selectedConnectionId;
+  final List<String> cycleConnectionIds;
 
   ConnectionPainter({
     required this.nodes,
     required this.connections,
-    this.hoveredConnectionId,
+    this.selectedConnectionId,
+    this.cycleConnectionIds = const [],
   });
 
   @override
@@ -23,7 +25,8 @@ class ConnectionPainter extends CustomPainter {
 
       if (fromNode == null || toNode == null) continue;
 
-      final isHovered = connection.id == hoveredConnectionId;
+      final isSelected = connection.id == selectedConnectionId;
+      final isCycle = cycleConnectionIds.contains(connection.id);
 
       // Calculate connection points (center of left/right edges)
       final fromPoint = Offset(
@@ -35,12 +38,18 @@ class ConnectionPainter extends CustomPainter {
         toNode.position.dy + 30,    // Vertical center of block
       );
 
-      // Create gradient from source to target color (or red if hovered)
+      // Create paint based on state (Priority: Selected > Cycle > Default)
       final Paint paint;
-      if (isHovered) {
+      if (isSelected) {
         paint = Paint()
           ..color = const Color(0xFFEF4444)
           ..strokeWidth = 4
+          ..style = PaintingStyle.stroke
+          ..strokeCap = StrokeCap.round;
+      } else if (isCycle) {
+        paint = Paint()
+          ..color = const Color(0xFFF59E0B) // Warning Orange
+          ..strokeWidth = 3.5
           ..style = PaintingStyle.stroke
           ..strokeCap = StrokeCap.round;
       } else {
@@ -81,7 +90,7 @@ class ConnectionPainter extends CustomPainter {
 
       // Draw arrowhead at end point
       _drawArrowhead(canvas, toPoint, controlPoint2,
-          isHovered ? const Color(0xFFEF4444) : toNode.primaryColor);
+          isSelected ? const Color(0xFFEF4444) : toNode.primaryColor);
     }
   }
 
