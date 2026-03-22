@@ -1,14 +1,14 @@
-# BioFlow: Project Overview & Architecture
+# Ricochet: Project Overview & Architecture
 
-## 🧬 What is BioFlow?
+## 🧬 What is Ricochet?
 
-**BioFlow is a visual pipeline builder for bioinformatics workflows, powered by Docker.**
+**Ricochet is a visual pipeline builder for bioinformatics workflows, powered by Docker.**
 
 Think of it as **"n8n meets Galaxy"** - combining the beautiful drag-and-drop interface of modern workflow tools with the scientific rigor of bioinformatics platforms, all running locally on your desktop.
 
 ### 🎯 Elevator Pitch (30 seconds)
 
-> "BioFlow lets bioinformaticians build complex data analysis pipelines by dragging and dropping Docker containers on a visual canvas. No more writing YAML or Bash scripts - just connect your favorite tools (FastQC, GATK, Samtools) like building blocks, hit Execute, and watch your analysis run. It's Galaxy's ease-of-use with Nextflow's power, but running entirely on your Mac, Windows, or Linux machine."
+> "Ricochet lets bioinformaticians build complex data analysis pipelines by dragging and dropping Docker containers on a visual canvas. No more writing YAML or Bash scripts - just connect your favorite tools (FastQC, GATK, Samtools) like building blocks, hit Execute, and watch your analysis run. It's Galaxy's ease-of-use with Nextflow's power, but running entirely on your Mac, Windows, or Linux machine."
 
 ### 🚀 The Problem We Solve
 
@@ -34,7 +34,7 @@ Think of it as **"n8n meets Galaxy"** - combining the beautiful drag-and-drop in
    - Different computers = different results
    - Published methods are often impossible to replicate
 
-**BioFlow's Solution:**
+**Ricochet's Solution:**
 
 ✅ Visual interface = no coding required  
 ✅ Docker containers = consistent environments  
@@ -50,7 +50,7 @@ Think of it as **"n8n meets Galaxy"** - combining the beautiful drag-and-drop in
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│                     BioFlow Desktop App                     │
+│                     Ricochet Desktop App                     │
 │                      (Flutter / Dart)                       │
 ├─────────────────────────────────────────────────────────────┤
 │                                                             │
@@ -82,8 +82,8 @@ Think of it as **"n8n meets Galaxy"** - combining the beautiful drag-and-drop in
         └───────────────────────────────────────┘
                             ↓
         ┌───────────────────────────────────────┐
-        │      BioFlow Workspace Directory      │
-        │   ~/Documents/bioflow_workspace/      │
+        │      Ricochet Workspace Directory      │
+        │   ~/Documents/Ricochet_workspace/      │
         │                                       │
         │   run_2025-12-04T10-30-15/           │
         │   ├── node1_alpine/output.txt        │
@@ -145,7 +145,7 @@ Think of it as **"n8n meets Galaxy"** - combining the beautiful drag-and-drop in
   - Variant calling from WGS/WES
   - ChIP-Seq peak calling
   - Metagenomics classification
-- **Why BioFlow**:
+- **Why Ricochet**:
   - ✅ Free (grants don't cover expensive software)
   - ✅ Works offline (unreliable university networks)
   - ✅ No server setup required (IT won't help)
@@ -157,7 +157,7 @@ Think of it as **"n8n meets Galaxy"** - combining the beautiful drag-and-drop in
   - Custom analysis workflows
   - Reproducible research pipelines
   - Method development and benchmarking
-- **Why BioFlow**:
+- **Why Ricochet**:
   - ✅ Docker = no environment management
   - ✅ Visual = easier to explain to collaborators
   - ✅ Local = fast iteration
@@ -169,7 +169,7 @@ Think of it as **"n8n meets Galaxy"** - combining the beautiful drag-and-drop in
   - Standardized analysis pipelines
   - Client-specific workflows
   - High-throughput sample processing
-- **Why BioFlow**:
+- **Why Ricochet**:
   - ✅ Client can see the pipeline visually (transparency)
   - ✅ Easy to train new staff
   - ✅ Consistent results across runs
@@ -183,7 +183,7 @@ Think of it as **"n8n meets Galaxy"** - combining the beautiful drag-and-drop in
   - QC on sequencing data
   - Simple variant annotation
   - Gene expression comparisons
-- **Why BioFlow**:
+- **Why Ricochet**:
   - ✅ No IT department dependency
   - ✅ Runs on their laptop
   - ✅ Data stays on-premise (compliance)
@@ -195,9 +195,9 @@ Think of it as **"n8n meets Galaxy"** - combining the beautiful drag-and-drop in
   - Teaching pipeline concepts
   - Student projects
   - Workshops and tutorials
-- **Why BioFlow**:
+- **Why Ricochet**:
   - ✅ Visual = students understand flow immediately
-  - ✅ No installation headaches (Docker Desktop + BioFlow)
+  - ✅ No installation headaches (Docker Desktop + Ricochet)
   - ✅ Pre-built templates for common assignments
 
 ---
@@ -209,44 +209,44 @@ Think of it as **"n8n meets Galaxy"** - combining the beautiful drag-and-drop in
 #### 1. **Galaxy** (galaxyproject.org)
 **What it is**: Web-based workflow platform for bioinformatics
 
-| Feature | Galaxy | BioFlow | Winner |
+| Feature | Galaxy | Ricochet | Winner |
 |---------|--------|---------|--------|
 | **Ease of Use** | ⭐⭐⭐⭐⭐ Drag-drop | ⭐⭐⭐⭐⭐ Drag-drop | 🟰 Tie |
-| **Local Execution** | ❌ Web-only | ✅ Desktop | 🏆 BioFlow |
-| **Speed** | ⭐⭐ Slow (server) | ⭐⭐⭐⭐⭐ Fast (local) | 🏆 BioFlow |
-| **Data Privacy** | ⭐⭐ Upload required | ⭐⭐⭐⭐⭐ Stays local | 🏆 BioFlow |
+| **Local Execution** | ❌ Web-only | ✅ Desktop | 🏆 Ricochet |
+| **Speed** | ⭐⭐ Slow (server) | ⭐⭐⭐⭐⭐ Fast (local) | 🏆 Ricochet |
+| **Data Privacy** | ⭐⭐ Upload required | ⭐⭐⭐⭐⭐ Stays local | 🏆 Ricochet |
 | **Tool Library** | ⭐⭐⭐⭐⭐ 9,000+ tools | ⭐⭐⭐ Growing | 🏆 Galaxy |
-| **Large Datasets** | ⭐⭐ Limited | ⭐⭐⭐⭐⭐ No limits | 🏆 BioFlow |
+| **Large Datasets** | ⭐⭐ Limited | ⭐⭐⭐⭐⭐ No limits | 🏆 Ricochet |
 | **Cost** | Free | Free (local) | 🟰 Tie |
 
-**Verdict**: Galaxy is better for beginners with small datasets. BioFlow is better for performance and privacy.
+**Verdict**: Galaxy is better for beginners with small datasets. Ricochet is better for performance and privacy.
 
 #### 2. **Nextflow** (nextflow.io)
 **What it is**: Code-first workflow management system (Groovy DSL)
 
-| Feature | Nextflow | BioFlow | Winner |
+| Feature | Nextflow | Ricochet | Winner |
 |---------|----------|---------|--------|
-| **Ease of Use** | ⭐⭐ Code-heavy | ⭐⭐⭐⭐⭐ Visual | 🏆 BioFlow |
+| **Ease of Use** | ⭐⭐ Code-heavy | ⭐⭐⭐⭐⭐ Visual | 🏆 Ricochet |
 | **Flexibility** | ⭐⭐⭐⭐⭐ Unlimited | ⭐⭐⭐⭐ High | 🏆 Nextflow |
-| **Learning Curve** | ⭐⭐ Steep | ⭐⭐⭐⭐⭐ Gentle | 🏆 BioFlow |
+| **Learning Curve** | ⭐⭐ Steep | ⭐⭐⭐⭐⭐ Gentle | 🏆 Ricochet |
 | **Scalability** | ⭐⭐⭐⭐⭐ HPC/Cloud | ⭐⭐⭐⭐ Local/Cloud | 🏆 Nextflow |
 | **Reproducibility** | ⭐⭐⭐⭐⭐ Excellent | ⭐⭐⭐⭐⭐ Excellent | 🟰 Tie |
 | **Community** | ⭐⭐⭐⭐⭐ nf-core | ⭐⭐ Growing | 🏆 Nextflow |
 
-**Verdict**: Nextflow is better for expert users and HPC. BioFlow is better for accessibility and quick prototyping.
+**Verdict**: Nextflow is better for expert users and HPC. Ricochet is better for accessibility and quick prototyping.
 
 #### 3. **Snakemake** (snakemake.github.io)
 **What it is**: Python-based workflow management (Makefile-inspired)
 
-| Feature | Snakemake | BioFlow | Winner |
+| Feature | Snakemake | Ricochet | Winner |
 |---------|-----------|---------|--------|
-| **Ease of Use** | ⭐⭐⭐ Python knowledge | ⭐⭐⭐⭐⭐ No coding | 🏆 BioFlow |
+| **Ease of Use** | ⭐⭐⭐ Python knowledge | ⭐⭐⭐⭐⭐ No coding | 🏆 Ricochet |
 | **Python Integration** | ⭐⭐⭐⭐⭐ Native | ⭐⭐⭐⭐ Via containers | 🏆 Snakemake |
-| **Visual Design** | ❌ None | ⭐⭐⭐⭐⭐ Yes | 🏆 BioFlow |
-| **Learning Curve** | ⭐⭐⭐ Moderate | ⭐⭐⭐⭐⭐ Low | 🏆 BioFlow |
+| **Visual Design** | ❌ None | ⭐⭐⭐⭐⭐ Yes | 🏆 Ricochet |
+| **Learning Curve** | ⭐⭐⭐ Moderate | ⭐⭐⭐⭐⭐ Low | 🏆 Ricochet |
 | **Academia Adoption** | ⭐⭐⭐⭐⭐ High | ⭐ New | 🏆 Snakemake |
 
-**Verdict**: Snakemake is better for Python-heavy workflows. BioFlow is better for non-programmers.
+**Verdict**: Snakemake is better for Python-heavy workflows. Ricochet is better for non-programmers.
 
 ### Indirect Competitors
 
@@ -254,24 +254,24 @@ Think of it as **"n8n meets Galaxy"** - combining the beautiful drag-and-drop in
 - **Type**: General data science platform (not bio-specific)
 - **Advantage**: Mature ecosystem, enterprise support
 - **Disadvantage**: Clunky UI, expensive licenses, Java-based
-- **BioFlow Edge**: Modern UI, bio-specific, free
+- **Ricochet Edge**: Modern UI, bio-specific, free
 
 #### 5. **n8n** (n8n.io)
 - **Type**: General workflow automation (not bio-specific)
 - **Advantage**: Beautiful UI, execution-based pricing model
 - **Disadvantage**: No bioinformatics tools, cloud-first
-- **BioFlow Edge**: Tailored for science, local-first, Docker native
+- **Ricochet Edge**: Tailored for science, local-first, Docker native
 
 ---
 
 ## 🎁 Unique Value Proposition
 
-### What Makes BioFlow Different?
+### What Makes Ricochet Different?
 
 **1. Visual + Local = Unique Combination**
 - Galaxy: Visual but web-only
 - Nextflow: Local but code-only
-- **BioFlow**: Both ✅
+- **Ricochet**: Both ✅
 
 **2. Desktop-First Architecture**
 - No server setup, no IT approval needed
@@ -280,7 +280,7 @@ Think of it as **"n8n meets Galaxy"** - combining the beautiful drag-and-drop in
 
 **3. Docker Native, Not Bolted-On**
 - Competitors added Docker later, feels hacky
-- BioFlow designed around Docker from day 1
+- Ricochet designed around Docker from day 1
 - Seamless integration (pull, run, mount, stream)
 
 **4. Modern Developer Experience**
@@ -302,29 +302,29 @@ Think of it as **"n8n meets Galaxy"** - combining the beautiful drag-and-drop in
 #### Use Case 1: **Quality Control Pipeline**
 **User**: Core sequencing facility  
 **Pipeline**: FASTQ → FastQC → MultiQC → Adapter Trimming (cutadapt) → FastQC Again  
-**Before BioFlow**: 2 hours of Bash scripting per project  
-**After BioFlow**: 5 minutes to build, save as template, reuse forever  
+**Before Ricochet**: 2 hours of Bash scripting per project  
+**After Ricochet**: 5 minutes to build, save as template, reuse forever  
 **ROI**: 95% time savings  
 
 #### Use Case 2: **Variant Calling for Cancer Research**
 **User**: PhD student in oncology  
 **Pipeline**: FASTQ → BWA Alignment → GATK Variant Calling → SnpEff Annotation → Custom R Script  
-**Before BioFlow**: Struggled with Nextflow syntax for 2 weeks  
-**After BioFlow**: Built visually in 1 afternoon  
+**Before Ricochet**: Struggled with Nextflow syntax for 2 weeks  
+**After Ricochet**: Built visually in 1 afternoon  
 **ROI**: Got back to science instead of coding  
 
 #### Use Case 3: **Teaching Bioinformatics**
 **User**: University professor  
 **Course**: Intro to Genomics (50 students)  
-**Before BioFlow**: 3-hour lab just to install tools, 50% failure rate  
-**After BioFlow**: 15 minutes (Docker Desktop + BioFlow), 100% success  
+**Before Ricochet**: 3-hour lab just to install tools, 50% failure rate  
+**After Ricochet**: 15 minutes (Docker Desktop + Ricochet), 100% success  
 **ROI**: Students actually learn concepts instead of fighting installation  
 
 ---
 
 ## 📊 Market Position
 
-### Where BioFlow Fits
+### Where Ricochet Fits
 
 ```
                     Complexity of Analysis
@@ -336,7 +336,7 @@ Think of it as **"n8n meets Galaxy"** - combining the beautiful drag-and-drop in
                       │   │ │        ← Power Users
         ┌─────────────┴───┴─┤        (Bioinformaticians)
         │                   │
-        │    BioFlow        │        ← Sweet Spot
+        │    Ricochet        │        ← Sweet Spot
         │      ⭐           │        (80% of users)
         │                   │
         └───────────────────┤
@@ -350,7 +350,7 @@ Think of it as **"n8n meets Galaxy"** - combining the beautiful drag-and-drop in
 
 **The 80/20 Rule:**
 - 80% of bioinformaticians need 20% of Nextflow's power
-- **BioFlow targets that 80%**
+- **Ricochet targets that 80%**
 - We're not trying to replace Nextflow for HPC gurus
 - We're empowering the majority who just want to get work done
 
@@ -378,29 +378,29 @@ The easiest way to build bioinformatics pipelines.
 The standard tool for reproducible computational biology.
 
 **Long-term (5 years):**  
-Every published bioinformatics paper includes a BioFlow pipeline file, just like they include code repositories today.
+Every published bioinformatics paper includes a Ricochet pipeline file, just like they include code repositories today.
 
 ---
 
 ## 📝 Summary
 
-**BioFlow is:**
+**Ricochet is:**
 - A desktop application for building bioinformatics pipelines visually
 - Powered by Docker for reproducibility
 - Designed for the 80% of users who find Nextflow too complex and Galaxy too limited
 - Free and open source (with paid cloud features coming)
 - Built with modern technology (Flutter) for a modern user experience
 
-**If you can use Figma, you can use BioFlow. If you can run Docker, you can run BioFlow. That's the promise.**
+**If you can use Figma, you can use Ricochet. If you can run Docker, you can run Ricochet. That's the promise.**
 
 ---
 
 ## 🔗 Quick Links (For README/Docs)
 
-- **GitHub**: github.com/yourname/bioflow
-- **Documentation**: bioflow.dev/docs
-- **Community**: discord.gg/bioflow
-- **Roadmap**: github.com/yourname/bioflow/projects
-- **Twitter**: @bioflow_dev
+- **GitHub**: github.com/yourname/Ricochet
+- **Documentation**: Ricochet.dev/docs
+- **Community**: discord.gg/Ricochet
+- **Roadmap**: github.com/yourname/Ricochet/projects
+- **Twitter**: @Ricochet_dev
 
 **Star us if you like it!** ⭐

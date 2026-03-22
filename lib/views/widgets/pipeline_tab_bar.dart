@@ -108,7 +108,7 @@ class _PipelineTabWidgetState extends State<_PipelineTabWidget> {
 
   @override
   Widget build(BuildContext context) {
-    // Elegant indigo styles for the modern BioFlow architecture
+    // Elegant indigo styles for the modern Ricochet architecture
     final bgColor = widget.isActive ? Colors.white : const Color(0xFF334155);
     final textColor = widget.isActive ? const Color(0xFF1E293B) : Colors.white70;
 

@@ -1,4 +1,4 @@
-package com.example.n8n_application_2
+package com.example.ricochet
 
 import io.flutter.embedding.android.FlutterActivity
 

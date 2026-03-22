@@ -1,0 +1,89 @@
+# Ricochet — Requirements
+# ============================================================
+# This file documents all dependencies needed to build and run
+# Ricochet from source, as well as the system-level tools required
+# for runtime pipeline execution.
+# ============================================================
+
+
+# ── Flutter / Dart SDK ─────────────────────────────────────
+# Install via: https://docs.flutter.dev/get-started/install
+#
+flutter>=3.22.0           # Minimum tested desktop-stable version
+dart>=3.4.0               # Bundled with the Flutter SDK above
+
+
+# ── Dart / pub.dev dependencies ────────────────────────────
+# These are declared in pubspec.yaml and resolved by `flutter pub get`.
+# Listed here for a human-readable overview.
+#
+archive>=4.0.9            # ZIP generation for Docker Compose export
+cupertino_icons>=1.0.8    # iOS-style icons (used on all platforms)
+dio                       # HTTP client (Docker Hub v2 API)
+file_picker>=10.3.10      # Native file/directory chooser dialog
+get>=4.7.2                # GetX state management + navigation
+http>=1.2.2               # Lightweight HTTP (Docker Hub search)
+json_annotation>=4.11.0   # Code-gen annotations for model serialisation
+path>=1.9.0               # Cross-platform path manipulation
+path_provider>=2.1.1      # Platform documents / app-data directories
+url_launcher>=6.2.2       # Open URLs in the system browser
+uuid>=4.5.1               # RFC-4122 UUID generation for node/connection IDs
+vector_math>=2.1.4        # 2-D canvas math (pan/zoom transforms)
+yaml>=3.1.3               # YAML helpers
+
+# dev dependencies
+build_runner>=2.12.2      # Code generation runner
+flutter_lints>=4.0.0      # Recommended lint rules
+json_serializable>=6.13.0 # JSON serialisation code generator
+
+
+# ── System / Runtime Requirements ──────────────────────────
+#
+# Ricochet orchestrates Docker containers to execute bioinformatics
+# tools.  Docker must be installed and running BEFORE launching
+# the app.
+#
+# ┌──────────────┬───────────────────────────────────────────────────────────┐
+# │ OS           │ Docker installation                                        │
+# ├──────────────┼───────────────────────────────────────────────────────────┤
+# │ macOS        │ Docker Desktop ≥ 4.x                                       │
+# │              │ https://docs.docker.com/desktop/install/mac-install/       │
+# │              │ Apple Silicon: enable Rosetta 2 in Docker Desktop settings │
+# ├──────────────┼───────────────────────────────────────────────────────────┤
+# │ Windows 10+  │ Docker Desktop ≥ 4.x with WSL2 backend (recommended)      │
+# │              │ https://docs.docker.com/desktop/install/windows-install/   │
+# │              │ Enable WSL2 in Windows Features before installing          │
+# ├──────────────┼───────────────────────────────────────────────────────────┤
+# │ Linux        │ Option A — Docker Desktop for Linux (GUI):                 │
+# │              │   https://docs.docker.com/desktop/install/linux-install/   │
+# │              │                                                             │
+# │              │ Option B — Docker Engine (CLI only, lighter):              │
+# │              │   Ubuntu/Debian : sudo apt-get install docker.io           │
+# │              │   Fedora/RHEL   : sudo dnf install docker-ce               │
+# │              │   Arch Linux    : sudo pacman -S docker                    │
+# │              │                                                             │
+# │              │ Required post-install step (both options):                 │
+# │              │   sudo usermod -aG docker $USER                            │
+# │              │   (log out and back in for the change to take effect)      │
+# │              │                                                             │
+# │              │ To start automatically on boot:                            │
+# │              │   sudo systemctl enable --now docker                       │
+# └──────────────┴───────────────────────────────────────────────────────────┘
+#
+# Docker version: 24.x or newer recommended.
+# docker>=24.0.0  (system package, not a pip/pub package)
+
+
+# ── Platform-specific Flutter desktop toolchains ──────────
+#
+# macOS
+#   Xcode >= 14 (from the Mac App Store)
+#   CocoaPods : sudo gem install cocoapods
+#
+# Windows
+#   Visual Studio 2022 with "Desktop development with C++" workload
+#   (Community edition is free)
+#
+# Linux
+#   sudo apt-get install clang cmake ninja-build pkg-config libgtk-3-dev
+#   (package names vary by distro; see https://docs.flutter.dev/get-started/install/linux)

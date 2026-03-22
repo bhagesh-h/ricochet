@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:get/get.dart';
 import 'package:file_picker/file_picker.dart';
-import 'package:bioflow/models/pipeline_node.dart';
+import 'package:Ricochet/models/pipeline_node.dart';
 import '../../controllers/pipeline_controller.dart';
 import '../../controllers/docker_search_controller.dart';
 import '../../models/docker_image.dart';
@@ -18,6 +18,7 @@ class ParameterSidebar extends StatefulWidget {
 
 class _ParameterSidebarState extends State<ParameterSidebar> {
   late PipelineController controller;
+  double _width = 350.0;
 
   @override
   void initState() {
@@ -27,9 +28,28 @@ class _ParameterSidebarState extends State<ParameterSidebar> {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      width: 350,
-      decoration: const BoxDecoration(
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        MouseRegion(
+          cursor: SystemMouseCursors.resizeLeftRight,
+          child: GestureDetector(
+            onHorizontalDragUpdate: (details) {
+              setState(() {
+                _width = (_width - details.delta.dx).clamp(280.0, 700.0);
+              });
+            },
+            child: Container(
+              width: 6,
+              color: Colors.transparent,
+            ),
+          ),
+        ),
+        SizedBox(
+          width: _width,
+          child: Container(
+            decoration: const BoxDecoration(
         color: Colors.white,
         border: Border(left: BorderSide(color: Color(0xFFE2E8F0))),
         boxShadow: [
@@ -104,9 +124,12 @@ class _ParameterSidebarState extends State<ParameterSidebar> {
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      const Text(
-                        'Parameters',
-                        style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: Color(0xFF0F172A)),
+                      const Expanded(
+                        child: Text(
+                          'Parameters',
+                          style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: Color(0xFF0F172A)),
+                          overflow: TextOverflow.ellipsis,
+                        ),
                       ),
                       if (widget.node.category != BlockCategory.input && widget.node.category != BlockCategory.output)
                         ElevatedButton.icon(
@@ -140,8 +163,11 @@ class _ParameterSidebarState extends State<ParameterSidebar> {
           ),
         ],
       ),
-    );
-  }
+    ),
+  ),
+],
+);
+}
 
   Widget _buildParameterItem(BlockParameter param, int index) {
     final canDelete = widget.node.category != BlockCategory.input && widget.node.category != BlockCategory.output;
@@ -523,12 +549,54 @@ class _AddParameterFormState extends State<AddParameterForm> {
   final _labelController = TextEditingController();
   final _keyController = TextEditingController();
   ParameterType _selectedType = ParameterType.text;
+  
+  BlockParameter? _selectedDefaultParam;
+  List<BlockParameter> _missingDefaults = [];
+
+  @override
+  void initState() {
+    super.initState();
+    final ctrl = Get.find<PipelineController>();
+    final activeNode = ctrl.nodes.firstWhereOrNull((n) => n.id == widget.nodeId);
+    if (activeNode != null) {
+      _missingDefaults = ctrl.getMissingDefaultParameters(activeNode);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
     return Column(
       mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
+        if (_missingDefaults.isNotEmpty) ...[
+          DropdownButtonFormField<BlockParameter?>(
+            value: _selectedDefaultParam,
+            isExpanded: true,
+            decoration: const InputDecoration(labelText: 'Restore Default Parameter'),
+            items: [
+              const DropdownMenuItem(value: null, child: Text("Create Custom Parameter...")),
+              ..._missingDefaults.map((p) => DropdownMenuItem(value: p, child: Text(p.label)))
+            ],
+            onChanged: (v) {
+              setState(() {
+                _selectedDefaultParam = v;
+                if (v != null) {
+                  _labelController.text = v.label;
+                  _keyController.text = v.key;
+                  _selectedType = v.type;
+                } else {
+                  _labelController.clear();
+                  _keyController.clear();
+                  _selectedType = ParameterType.text;
+                }
+              });
+            },
+          ),
+          const SizedBox(height: 16),
+          const Divider(),
+          const SizedBox(height: 8),
+        ],
         TextFormField(controller: _labelController, decoration: const InputDecoration(labelText: 'Label')),
         TextFormField(controller: _keyController, decoration: const InputDecoration(labelText: 'Key')),
         DropdownButtonFormField<ParameterType>(
@@ -539,12 +607,19 @@ class _AddParameterFormState extends State<AddParameterForm> {
         const SizedBox(height: 20),
         ElevatedButton(
           onPressed: () {
+            if (_keyController.text.trim().isEmpty) return;
             Get.find<PipelineController>().addNodeParameter(widget.nodeId, BlockParameter(
-              key: _keyController.text, label: _labelController.text, type: _selectedType,
+              key: _keyController.text.trim(), 
+              label: _labelController.text.trim().isEmpty ? _keyController.text.trim() : _labelController.text.trim(), 
+              type: _selectedType,
             ));
             Get.back();
           },
-          child: const Text('Add'),
+          style: ElevatedButton.styleFrom(
+            backgroundColor: widget.primaryColor,
+            foregroundColor: Colors.white,
+          ),
+          child: const Text('Add Parameter'),
         ),
       ],
     );

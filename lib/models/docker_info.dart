@@ -136,12 +136,31 @@ class PlatformInfo {
     return architecture;
   }
 
-  /// Whether we need to use platform emulation for x86 images
-  bool get needsPlatformEmulation => isAppleSilicon;
+  /// Whether we need to pass an explicit --platform flag to Docker.
+  /// - Apple Silicon (arm64 macOS): most bioinformatics images are amd64-only,
+  ///   so we request linux/amd64 and Rosetta 2 / QEMU emulates it.
+  /// - ARM64 Linux (e.g. Raspberry Pi, AWS Graviton): native arm64 images
+  ///   exist for many tools; we request linux/arm64 to avoid emulation.
+  /// - x86_64 on any OS: no emulation needed — native amd64 containers.
+  bool get needsPlatformEmulation => isAppleSilicon || _isArmLinux;
 
-  /// Platform flag for Docker commands on Apple Silicon
-  String get dockerPlatformFlag =>
-      isAppleSilicon ? 'linux/amd64' : 'linux/amd64';
+  bool get _isArmLinux =>
+      isLinux && (architecture == 'arm64' || architecture == 'aarch64');
+
+  /// Platform flag sent to Docker via --platform.
+  String get dockerPlatformFlag {
+    if (isAppleSilicon) {
+      // Request amd64 images so the broadest set of bioinformatics tools works
+      // (emulated by Rosetta 2 or QEMU inside Docker Desktop).
+      return 'linux/amd64';
+    }
+    if (_isArmLinux) {
+      // Native ARM64 Linux: prefer arm64 images to avoid emulation penalties.
+      return 'linux/arm64';
+    }
+    // Default: x86_64 on macOS, Windows, Linux.
+    return 'linux/amd64';
+  }
 }
 
 /// Docker health status

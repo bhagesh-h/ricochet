@@ -120,7 +120,7 @@ class ExecutionController extends GetxController {
     final pipelineCtrl = Get.find<PipelineController>();
     if (pipelineCtrl.cycleConnectionIds.isNotEmpty) {
       errors.add(
-          'Pipeline contains cycles (loops). BioFlow only supports Directed Acyclic Graphs (DAGs).');
+          'Pipeline contains cycles (loops). Ricochet only supports Directed Acyclic Graphs (DAGs).');
     }
 
     if (errors.isNotEmpty) {

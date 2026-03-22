@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:file_picker/file_picker.dart';
-import 'package:bioflow/controllers/docker_search_controller.dart';
+import 'package:Ricochet/controllers/docker_search_controller.dart';
 import 'controllers/pipeline_controller.dart';
 import 'controllers/execution_controller.dart';
 import 'controllers/docker_controller.dart';
@@ -59,11 +59,11 @@ class MyApp extends StatelessWidget {
                   ),
                   borderRadius: BorderRadius.circular(8),
                 ),
-                child: const Icon(Icons.biotech, color: Colors.white, size: 20),
+                child: Image.asset('assets/logo-nobg.png', width: 20, height: 20, color: Colors.white),
               ),
               const SizedBox(width: 12),
               const Text(
-                'BioFlow',
+                'Ricochet',
                 style: TextStyle(
                   fontWeight: FontWeight.w700,
                   color: Color(0xFF0F172A),
@@ -388,7 +388,7 @@ class MyApp extends StatelessWidget {
                     }),
                     const Spacer(),
                     const Text(
-                      'BioFlow v1.0.0',
+                      'Ricochet v1.0.0',
                       style: TextStyle(color: Colors.white54, fontSize: 11),
                     ),
                   ],

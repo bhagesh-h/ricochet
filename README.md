@@ -1,589 +1,372 @@
-<img src="assets/logo-nobg.png" width="100">
+<p align="center">
+  <img src="assets/logo-nobg.png" alt="Ricochet Logo" width="180"/>
+</p>
 
-# BioFlow — Visual Bioinformatics Pipeline Designer
+# Ricochet
 
-<div align="center">
+**A visual, Docker-powered bioinformatics pipeline builder for your desktop.**
 
-![Flutter](https://img.shields.io/badge/Flutter-3.5.3-02569B?logo=flutter)
-![Dart](https://img.shields.io/badge/Dart-3.5.3-0175C2?logo=dart)
-![License](https://img.shields.io/badge/License-MIT-green)
-![Platform](https://img.shields.io/badge/Platform-macOS%20%7C%20Windows%20%7C%20Linux-lightgrey)
-![Docker](https://img.shields.io/badge/Powered%20by-Docker-2496ED?logo=docker)
+Ricochet lets you build complex bioinformatics analysis pipelines by dragging and dropping Docker containers onto a visual canvas — no YAML, no Bash scripts, no server required. Connect tools like FastQC, STAR, BWA, GATK, and Samtools like building blocks, configure them through a clean GUI, and hit **Execute**. Ricochet handles the rest.
 
-**Build bioinformatics pipelines visually — no code required. Powered by Docker.**
-
-</div>
+> **"If you can use Figma, you can use Ricochet. If you can run Docker, you can run Ricochet."**
 
 
-## 📋 Table of Contents
 
-- [What is BioFlow?](#-what-is-bioflow)
-- [Who is it for?](#-who-is-it-for)
-- [Features](#-features)
-- [Architecture](#-architecture)
-- [Project Structure](#-project-structure)
-- [Getting Started](#-getting-started)
-- [How it Works](#-how-it-works)
-- [Keyboard Shortcuts](#-keyboard-shortcuts)
-- [Bioinformatics Tool Library](#-bioinformatics-tool-library)
-- [Example Pipelines](#-example-pipelines)
-- [Implementation Status](#-implementation-status)
-- [Technology Stack](#-technology-stack)
-- [macOS Docker Setup](#-macos-docker-connectivity--setup-guide)
-- [Contributing](#-contributing)
+## Features
+
+### Visual Pipeline Canvas
+
+- **Infinite canvas** with smooth pan and zoom
+- **Drag-and-drop** nodes from the sidebar or add them directly on the canvas
+- **Bezier curve connections** between node ports to represent data flow
+- **Cycle detection** — connections that create loops are highlighted and blocked at execution time
+- **Canvas reset** button to clear the workspace and start fresh
+
+### Multi-Tab Pipeline Editor (Chrome-style)
+
+- Work on multiple pipelines simultaneously in separate tabs
+- Each tab is **independently named, saved, and restored** across sessions
+- **Auto-save** — changes are debounced and written to disk (as `pipeline.json`) 2 seconds after each edit
+- **Unsaved-changes indicator** (`•`) shown on each tab — prompts before closing
+- **Tab renaming** — double-click to rename; folder on disk is renamed accordingly
+- **Session restore** — last open pipelines are automatically reloaded on app launch
+- Open and **Import** an existing pipeline folder from disk via the toolbar
+
+### Built-in Bioinformatics Tool Blocks
+
+Drag pre-configured nodes from the sidebar with tool-specific defaults:
+
+| Block | Docker Image | Purpose |
+|-------|-------------|---------|
+| **FastQC** | `staphb/fastqc` | Quality control for sequencing data |
+| **Trimmomatic** | `staphb/trimmomatic` | Trim and filter sequencing reads |
+| **BWA Aligner** | `staphb/bwa` | Sequence alignment against reference (mem, aln, bwasw) |
+| **STAR Aligner** | `staphb/star` | Spliced alignment to reference genome |
+| **Samtools** | `staphb/samtools` | Process SAM/BAM alignments (view, sort, index, flagstat, stats) |
+| **Input Data** | *(none)* | File picker node — mounts selected file into downstream containers |
+| **Output Results** | *(none)* | Receives the final processed data at the end of a pipeline |
+
+### Docker Hub Integration
+
+- **Live search** the Docker Hub registry directly from the sidebar — no browser required
+- Search results show stars, pulls, and whether the image is official
+- Click any result to drop a fully configured node onto the canvas
+- **Smart default tag** — Ricochet automatically fetches the most recent stable tag for each image from Docker Hub (e.g. `0.23.4` instead of `latest`)
+- Tag list is sorted by recency using a deterministic algorithm that ranks version-like tags (e.g. `v1.2.3`) above others
+- Tag results are **cached with LRU eviction and TTL** to avoid redundant API calls
+- In-flight requests are **deduplicated** so rapid searches don't cause repeated network hits
+
+### Node Configuration Panel
+
+Each node exposes fully editable parameters:
+
+- **Text, numeric, dropdown, and file-picker** parameter fields
+- Parameters for Docker nodes: **Docker Image**, **Image Tag**, **Command**, **Volume Mounts**, **Environment Variables**, **Port Mappings**
+- Pre-filled default commands for well-known images (FastQC, Trimmomatic, BWA, STAR, GATK, MultiQC, Samtools, HISAT2, Bowtie2, Kallisto, Salmon, Cutadapt, Fastp, Python, R/Bioconductor)
+- **Retry** button on failed image downloads
+
+### Automatic Docker Image Management
+
+- When a Docker node is dropped onto the canvas, Ricochet immediately checks if the image exists locally
+- If not found, it **automatically pulls the image** in the background with a **live layer-by-layer progress bar**
+- Pulling and extraction progress is tracked per-layer and displayed inside the node card
+- Images already cached locally are recognised instantly (`Image ready`)
+- Image pulls can be **cancelled** at any time
+
+### Pipeline Execution Engine
+
+- **Topological sort** (Kahn's algorithm) determines the correct execution order for all connected nodes
+- **Data flow** — output from each node is automatically mounted as `/inputs/<filename>` in the next container; `$INPUT_FILE` environment variable is injected for convenience
+- Outputs are written to `/outputs/` inside each container, mapped to a **timestamped workspace folder** on the host
+- **Heartbeat logging** — every 10 seconds Ricochet logs the elapsed time of long-running containers so you know they're still alive
+- **Pre-execution validation** — checks for empty canvas, missing commands, empty Docker image fields, and disconnected nodes before running
+- Pipeline stops immediately on the first failed node with detailed error output
+- **Stop button** — gracefully kills all running containers mid-execution
+- **Run Anyway** option to override validation warnings when needed
+
+### Execution Console (Terminal Panel)
+
+- Slide-up terminal panel accessible from the status bar at the bottom
+- **Per-tab logs** — each pipeline tab has its own isolated execution log
+- Structured log messages: `[STDOUT]`, `[STDERR]`, `[SYSTEM]`, `[ERROR]`
+- Logs show input/output file paths, files produced (with sizes), and elapsed time per node
+- **Resizable** — drag to expand or compact the panel (clamped between 100px – 600px)
+- Clear logs button to reset the console for a fresh run
+
+### Undo / Redo
+
+- Full **undo/redo history per tab** — each tab maintains its own independent state stack
+- History is preserved when switching between tabs
+- Undo/redo operates on canvas nodes and connections
+
+### Docker Compose Export
+
+Export your entire pipeline as a **production-ready Docker Compose project**:
+
+- Generates a `.zip` archive containing:
+  - `docker-compose.yml` — all services with correct `depends_on: service_completed_successfully` ordering
+  - `pipeline_config.env` — all node parameters as overridable environment variables
+  - `README.md` — auto-generated documentation with run instructions, lifecycle cheat-sheet, and common fixes
+  - `raw_data/` and `results/` placeholder directories
+- Service names are auto-slugified from node titles with collision avoidance
+- **Platform-aware** — on Apple Silicon, `platform: linux/amd64` is injected automatically; on ARM64 Linux, `platform: linux/arm64` is used instead
+- Supports **aggregator nodes** that also start a local HTTP server (`python3 -m http.server 8080`) for viewing results in the browser
+
+### Docker Status Banner
+
+- Persistent banner shown at the top of the UI when Docker is not running or not installed
+- **Per-OS** install and launch instructions (macOS, Windows, Linux — see below)
+- **Apple Silicon notice** — informs users running on macOS ARM that x86-only images will use emulation
+- Execute button is automatically **disabled** when Docker is not available; tooltip explains why
+- **Retry** button to re-check Docker status without restarting the app
+
+### Workspace & Persistence
+
+- Each pipeline is saved as a `pipeline.json` file inside its own named folder in the Ricochet workspace
+- Each pipeline run gets a **fresh timestamped run directory** — no stale outputs from prior runs
+- Node output folders are named `<nodeTitle>_<nodeId>/` for easy identification
+- Input file path is passed to downstream containers via volume mounts at `/inputs/<filename>`
+- **Open Recent** — toolbar button shows a dialog listing all saved pipelines with their folder paths
+- Import any pipeline folder from anywhere on disk via the **Import** button
+
+### Duplicate Nodes
+
+Right-click or menu option to **duplicate** any node — creates a deep copy with a new UUID offset by 30 px. Docker image pull is automatically triggered for the duplicate if it is a Docker node.
+
+### Node Status Indicators
+
+| Status | Meaning |
+|--------|---------|
+| `idle` | Not yet run |
+| `checking` | Verifying if image is cached |
+| `downloading` | Pulling image from Docker Hub |
+| `ready` | Image cached, ready to execute |
+| `running` | Container currently executing |
+| `success` | Completed successfully |
+| `failed` | Execution failed |
+| `error` | Image pull or setup error |
 
 
-## 🧬 What is BioFlow?
 
-**BioFlow** is a desktop application that lets you build complex bioinformatics analysis pipelines by dragging and dropping Docker containers on a visual canvas — no command-line required.
-
-Think of it as **"Figma for bioinformatics pipelines"**: connect tools like FastQC, GATK, Samtools, or any Docker image by drawing lines between nodes, configure parameters in a sidebar, and hit Execute. BioFlow handles the rest — pulling images, running containers in order, passing output files between steps, and streaming live logs.
-
-### Why BioFlow?
-
-| Pain Point | BioFlow Solution |
-|---|---|
-| Complex CLI tools | Visual drag-and-drop interface |
-| "It works on my machine" | Docker containers = consistent environments |
-| Conda/Python version hell | Each tool runs in its own container |
-| Hard to share pipelines | Pipeline is a visual file anyone can see |
-| Galaxy is slow (web-only) | Runs locally on your desktop — fast & private |
-| Nextflow requires coding | No code needed — just connect nodes |
-
-
-## 👥 Who is it for?
-
-- **PhD students & postdocs** building repeatable analysis pipelines
-- **Bioinformatics core facilities** standardising workflows for clients
-- **Computational biologists** who want Docker benefits without DevOps 
-- **Pharma/biotech scientists** running analysis without IT support
-- **Bioinformatics educators** teaching pipeline concepts without CLI struggle
-
-
-## ✨ Features
-
-### ✅ Live & Working
-
-#### 🎨 Visual Canvas
-- Infinite scrollable canvas (50,000 × 50,000 virtual space)
-- Smooth pan and zoom (10% – 500%) with animated controls
-- Drag-and-drop node placement from sidebar
-- Fit-to-view and reset zoom buttons
-- Visual bezier curve connections with colour-coded gradients
-- **Click any connection line to select it** (turns red) — then Delete to remove it
-
-#### ⌨️ Keyboard Shortcuts
-- `Cmd/Ctrl + Z` — Undo
-- `Cmd/Ctrl + Shift + Z` / `Cmd/Ctrl + Y` — Redo
-- `Delete` / `Backspace` — Delete selected node or selected connection
-- `Escape` — Deselect all
-- Right-click / long-press any node → context menu: **Duplicate Node**, **Delete Node**
-
-#### 🐳 Docker Integration
-- Real-time Docker Hub search (official + community images)
-- Drag any Docker image from search directly onto canvas
-- **Image tag picker** — type `python:3.11` to pin a specific tag; it auto-fills the Tag field
-- **Live Docker health monitoring** — status banner shows if Docker is running
-- Collapsible Apple Silicon notice (only shown when Docker is not running)
-- Auto-start prompts when Docker Desktop is not running
-- Apple Silicon (M1/M2/M3) aware — uses Rosetta 2 for x86 images
-- **Docker pull progress bar** — real-time progress indicator shown below each node while pulling
-
-#### ⚙️ Node Configuration
-- Right-side parameter sidebar for each selected node
-- Parameter types: text, numeric, dropdown, toggle, file path
-- Dynamic add/remove custom parameters per node
-- Custom Docker command override per node
-- Required field validation
-- **Duplicate Node** — right-click any node to create an exact copy
-
-#### 🔗 Connection System
-- Drag from output ports to input ports to connect nodes
-- Bezier curve rendering with colour-coded gradient connections
-- **Click any connection to highlight it red** — then press Delete or click the snackbar button to remove it
-- Cycle detection — pipeline alerts if you create a loop
-- Topological sorting — nodes always execute in the correct dependency order
-
-#### 🚀 Pipeline Execution Engine
-- **Pre-execution validation** — BioFlow checks for:
-  - Empty canvas
-  - Docker nodes with no command set
-  - Disconnected nodes in a multi-node pipeline
-  - Shows a clear issue list dialog with "Fix Issues" or "Run Anyway" options
-- **Real Docker container execution** (not mock/simulation)
-- Topological sort (Kahn's algorithm) determines execution order
-- **Data flow between nodes** — output files passed automatically via volume mounts and `$INPUT_FILE` env vars
-- Real-time stdout/stderr streaming to the execution console
-- Per-node status indicators: pending → running → success / failed
-- **Stop Pipeline button** — kill all running containers mid-execution instantly
-- Pipeline halts immediately on any node failure with clear error reporting
-
-#### 📂 Output Management
-- Timestamped run directories (`~/Documents/BioFlow/Runs/run_YYYY-MM-DD_HH-MM-SS/`)
-- Each node writes to its own subdirectory
-- "Open Run Folder" button — opens output directory in Finder/Explorer instantly
-
-#### 🖥️ Execution Panel
-- Collapsible and resizable terminal panel at the bottom of the screen
-- **Auto-scroll to bottom** — always shows the latest log line as it arrives
-- Pipeline-level logs (execution order, overall status)
-- Per-node logs (Docker stdout/stderr, system messages)
-- Colour-coded: green for stdout, red for stderr, blue for system
-- **Copy to clipboard** — one-click copy of all logs
-- Clear console button
-
-#### 📦 Export to Docker-Compose
-- **One-click Export**: Generate a production-ready `.zip` containing your fully configured pipeline
-- **Standard Format**: Creates a standard `docker-compose.yml` with dependencies and services mapped
-- **Dynamic Configuration**: Auto-generates `pipeline_config.env` for easy parameter tweaking
-- **Production Ready**: Generates a tailored `README.md` with instructions and cheat-sheets
-
-#### 🗂️ Multi-Tab Workflows
-- **Chrome-style tab bar** above the canvas — open unlimited independent pipelines simultaneously
-- **Per-tab isolation** — each tab has its own nodes, connections, undo/redo stack, and execution logs
-- **Session restore** — on restart, BioFlow automatically reopens all previously open pipelines from disk
-- **Auto-save** — every canvas change is debounced and persisted to `~/Documents/BioFlow/Pipelines/<name>/pipeline.json` within 2 seconds. Auto-save fires only on **drag-end** (not every drag pixel) to keep performance smooth
-- **Import Pipeline** — open any exported or previously saved pipeline folder via the toolbar button
-- **Open Recent** — instantly re-open any pipeline that has been previously auto-saved to disk
-- **Rename** — double-click or right-click any tab label to rename it
-
-
-## 🏗️ Architecture
-
-### Design Patterns
-
-- **MVC + GetX** — Model-View-Controller with reactive state management
-- **Service Layer** — Docker and Workspace concerns separated from controllers
-- **Observer Pattern** — UI auto-updates via GetX `Obx` reactivity
-- **Topological Sort** — Kahn's algorithm for dependency-safe execution order
-- **JSON Serializable** — `@JsonSerializable` on all models via `json_annotation` + `build_runner`
-
-### Execution Data Flow
+## Architecture
 
 ```
-User hits Execute
-       ↓
-ExecutionController.validatePipeline()   ← checks empty nodes, missing commands, disconnected nodes
-       ↓ (if valid)
-ExecutionController._doRunPipeline()
-       ↓
-PipelineController.getExecutionOrder()   ← Kahn's topological sort
-       ↓
-For each node (in order):
-  PipelineController.executeNode(node, inputFiles)
-       ↓
-  DockerService.runContainer(image:tag, command, volumes, envVars)
-       ↓
-  Stream stdout/stderr → Execution Panel (auto-scrolled)
-       ↓
-  Capture output file path → pass to next node as $INPUT_FILE
-       ↓
-WorkspaceService saves output to ~/Documents/BioFlow/Runs/<timestamp>/
+┌─────────────────────────────────────────────────────────────┐
+│                     Ricochet Desktop App                     │
+│                      (Flutter / Dart)                       │
+├───────────────┬─────────────────┬───────────────────────────┤
+│  PipelineCanvas│   ToolSidebar  │     ExecutionPanel        │
+│  (Nodes +      │  (Docker Hub   │  (Logs, Stop, Resize)     │
+│   Connections) │   + Built-ins) │                           │
+├───────────────┴─────────────────┴───────────────────────────┤
+│                      Controller Layer                       │
+│  PipelineController │ ExecutionController │ DockerController│
+│  PipelineTabsCtrl   │ DockerSearchController                │
+├─────────────────────────────────────────────────────────────┤
+│                       Service Layer                         │
+│  DockerService (CLI) │ WorkspaceService │ ComposeExportSvc  │
+└─────────────────────────────────────────────────────────────┘
+                              ↓
+           ┌────────────────────────────────┐
+           │      Docker Engine (Local)     │
+           │  Container 1 │ Container 2 │…  │
+           └────────────────────────────────┘
+                              ↓
+           ┌────────────────────────────────────────────┐
+           │  Workspace directory (OS Documents folder) │
+           │  run_2025-06-01T10-30-15/                  │
+           │  ├── FastQC_<id>/output.txt                │
+           │  └── Trimmomatic_<id>/…                    │
+           └────────────────────────────────────────────┘
 ```
 
+### Tech Stack
 
-## 📁 Project Structure
-
-```
-bioflow/
-├── lib/
-│   ├── main.dart                                    ← App entry point & layout
-│   │
-│   ├── controllers/
-│   │   ├── docker_controller.dart                   ← Docker health monitoring
-│   │   ├── docker_search_controller.dart            ← Docker Hub image search
-│   │   ├── execution_controller.dart                ← Execution, validation, stop pipeline
-│   │   ├── pipeline_controller.dart                 ← Nodes, connections, undo/redo, duplicate
-│   │   └── pipeline_tabs_controller.dart            ← Multi-tab + session restore + auto-save
-│   │
-│   ├── models/
-│   │   ├── docker_image.dart                        ← Docker image data model
-│   │   ├── docker_info.dart                         ← Docker system info model
-│   │   ├── docker_pull_progress.dart                ← Pull progress tracking
-│   │   ├── pipeline_file.dart                       ← Per-tab pipeline file model
-│   │   ├── pipeline_file.g.dart                     ← Generated JSON serialization
-│   │   ├── pipeline_node.dart                       ← Node & connection models
-│   │   └── pipeline_node.g.dart                     ← Generated JSON serialization
-│   │
-│   ├── services/
-│   │   ├── docker_service.dart                      ← All Docker CLI calls
-│   │   ├── export_service.dart                      ← Docker-Compose ZIP export
-│   │   └── workspace_service.dart                   ← Output directory & session management
-│   │
-│   └── views/
-│       ├── pipeline_canvas.dart                     ← Infinite canvas + keyboard shortcuts + clickable connections
-│       ├── tool_sidebar.dart                        ← Docker search + bioinformatics tool library
-│       └── widgets/
-│           ├── connection_dot.dart                  ← Port drag dot
-│           ├── connection_painter.dart              ← Bezier connection drawing (hover highlight)
-│           ├── docker_status_banner.dart            ← Collapsible Docker status top bar
-│           ├── execution_panel.dart                 ← Terminal panel (auto-scroll, stop, clipboard)
-│           ├── parameter_sidebar.dart               ← Node parameter editor
-│           ├── pipeline_block_widget.dart           ← Node block (right-click menu, pull progress bar)
-│           └── pipeline_tab_bar.dart                ← Chrome-style tab bar
-│
-├── pubspec.yaml                                     ← Dependencies
-└── README.md                                        ← This file
-```
+| Layer | Technology |
+|-------|-----------|
+| UI Framework | Flutter 3.x / Dart 3.x |
+| State Management | GetX 4.x |
+| Docker Integration | Docker CLI via Dart `Process` API |
+| HTTP (Docker Hub) | `http`, `dio` |
+| Serialization | `json_serializable` / `json_annotation` |
+| File Picking | `file_picker` |
+| Path Handling | `path`, `path_provider` |
+| Archive (Export) | `archive` (ZIP) |
+| Execution Algorithm | Kahn's Topological Sort |
 
 
-## 🚀 Getting Started
+
+## Getting Started
 
 ### Prerequisites
 
-- **Flutter SDK** 3.5.3 or higher
-- **Docker Desktop** (must be running when you execute pipelines)
-- macOS, Windows, or Linux
+See [`requirements.txt`](requirements.txt) for the full breakdown. The short version:
 
-### Installation
+| Platform | Flutter SDK | Docker |
+|----------|------------|--------|
+| **macOS** | ≥ 3.22 | Docker Desktop ≥ 4.x ([download](https://docs.docker.com/desktop/install/mac-install/)) |
+| **Windows 10/11** | ≥ 3.22 | Docker Desktop ≥ 4.x + WSL2 backend ([download](https://docs.docker.com/desktop/install/windows-install/)) |
+| **Linux** | ≥ 3.22 | Docker Engine **or** Docker Desktop for Linux ([docs](https://docs.docker.com/desktop/install/linux-install/)) |
+
+### Platform-Specific Docker Setup
+
+#### macOS
 
 ```bash
-# 1. Clone the repository
-git clone <repository-url>
-cd bioflow
+# Install Docker Desktop (ARM or Intel build is selected automatically)
+open https://docs.docker.com/desktop/install/mac-install/
 
-# 2. Install Flutter dependencies
+# Apple Silicon users: enable Rosetta emulation in Docker Desktop
+# → Settings → General → "Use Rosetta for x86/amd64 emulation"
+```
+
+#### Windows 10 / 11
+
+```powershell
+# 1. Enable WSL2 (run as Administrator)
+wsl --install
+
+# 2. Download and install Docker Desktop, choosing the WSL2 backend
+# → https://desktop.docker.com/win/main/amd64/Docker%20Desktop%20Installer.exe
+
+# 3. After install, Docker Desktop starts automatically
+docker run hello-world   # verify it works
+```
+
+#### Linux (Ubuntu / Debian)
+
+```bash
+# Option A — Docker Engine (lighter, CLI only)
+sudo apt-get update
+sudo apt-get install -y docker.io
+
+# Add yourself to the docker group (avoids needing sudo for every command)
+sudo usermod -aG docker $USER
+newgrp docker              # apply without logging out
+
+# Enable the daemon to start on boot
+sudo systemctl enable --now docker
+
+# Option B — Docker Desktop for Linux (GUI + tray icon)
+# Follow the official guide: https://docs.docker.com/desktop/install/linux-install/
+
+# Verify
+docker run hello-world
+```
+
+#### Linux (Fedora / RHEL / CentOS)
+
+```bash
+sudo dnf install -y docker-ce docker-ce-cli containerd.io
+sudo usermod -aG docker $USER
+sudo systemctl enable --now docker
+```
+
+#### Linux (Arch)
+
+```bash
+sudo pacman -S docker
+sudo usermod -aG docker $USER
+sudo systemctl enable --now docker
+```
+
+### Build & Run Ricochet
+
+```bash
+# 1. Install Flutter SDK (https://docs.flutter.dev/get-started/install)
+
+# 2. Clone and install dependencies
+git clone <repo-url>
+cd ricochet
 flutter pub get
 
-# 3. Generate JSON serialization code
-dart run build_runner build --delete-conflicting-outputs
-
-# 4. Run the app (desktop recommended)
+# 3. Run (pick your target platform)
 flutter run -d macos      # macOS
 flutter run -d windows    # Windows
-flutter run -d linux      # Linux
-```
+flutter run -d linux      # Linux (GTK)
 
-### Build Release
-
-```bash
-flutter build macos
-flutter build windows
-flutter build linux
-```
-
-> **Note (macOS):** If running locally for development, set:
-> ```bash
-> export HOME="/Users/your-username"
-> ```
-> This is required for Docker CLI access on some macOS setups.
-
-
-## 🎓 How it Works
-
-### Building a Pipeline (Step-by-step)
-
-1. **Search for a Docker image** in the left sidebar (e.g. `fastqc`, `python`, `alpine`) — or pick from the built-in bioinformatics library
-2. **Drag it onto the canvas** — a node is created. If the image isn't cached locally, a pull progress bar appears below the node
-3. **Click the node** to open its parameter panel on the right
-4. **Set the Docker command** (e.g. `fastqc /data/input.fastq -o /output/`)
-5. **Connect nodes** by dragging from one node's output port (right dot) to another's input port (left dot)
-6. **Click Execute** — BioFlow validates the pipeline first, then runs all nodes in topological order, passing output files automatically
-7. **Monitor logs** in the auto-scrolling execution panel — click **Stop** at any time to kill running containers
-8. *(Optional)* **Right-click any node** → Duplicate to clone it, or Delete to remove it
-
-
-## ⌨️ Keyboard Shortcuts
-
-| Shortcut | Action |
-|---|---|
-| `Cmd/Ctrl + Z` | Undo |
-| `Cmd/Ctrl + Shift + Z` | Redo |
-| `Cmd/Ctrl + Y` | Redo (alternative) |
-| `Delete` / `Backspace` | Delete selected node or connection |
-| `Escape` | Deselect node / connection |
-| Right-click node | Context menu (Duplicate / Delete) |
-| Click connection line | Select connection (turns red) |
-
-
-## 🧪 Bioinformatics Tool Library
-
-BioFlow includes 20 pre-configured bioinformatics tools organised by category. Drag any onto the canvas — the correct Docker image is pulled automatically.
-
-| Category | Tools |
-|---|---|
-| **Quality Control** | FastQC, MultiQC, Fastp, Trimmomatic |
-| **Alignment** | BWA, HISAT2, STAR, Bowtie2 |
-| **SAM/BAM** | Samtools, Picard |
-| **Variant Calling** | GATK, FreeBayes, bcftools |
-| **RNA-Seq** | featureCounts, DESeq2, Salmon |
-| **I/O** | Input (data source), Output (data destination) |
-
-You can also search Docker Hub directly for any image and drag it onto the canvas.
-
-
-## 🧬 Example Pipelines
-
-### Example 1 — Hello World (alpine)
-| Field | Value |
-|---|---|
-| Docker Image | `alpine` |
-| Command | `echo "Hello from BioFlow!" > /output/hello.txt` |
-
-### Example 2 — Python with specific tag
-| Field | Value |
-|---|---|
-| Docker Image | `python` |
-| Image Tag | `3.11-slim` |
-| Command | `python -c "data=[1,2,3,4,5]; open('/output/stats.txt','w').write(f'Sum: {sum(data)}')"` |
-
-### Example 3 — Two-Node Pipeline (data flows between nodes)
-
-**Node 1** — Generate data:
-| Field | Value |
-|---|---|
-| Docker Image | `alpine` |
-| Command | `sh -c "echo 'ATCGATCG\nGCTAGCTA\nTTAAGGCC' > /output/sequences.txt"` |
-
-**Node 2** — Count sequences (connects from Node 1's output):
-| Field | Value |
-|---|---|
-| Docker Image | `alpine` |
-| Command | `sh -c "wc -l < $INPUT_FILE > /output/count.txt && echo 'Lines counted!'"` |
-
-Connect Node 1 → Node 2 on the canvas. When executed, `$INPUT_FILE` in Node 2 automatically points to Node 1's `sequences.txt`.
-
-### Example 4 — FastQC Quality Control
-| Field | Value |
-|---|---|
-| Docker Image | `biocontainers/fastqc` |
-| Tag | `v0.11.9_cv8` |
-| Command | `fastqc $INPUT_FILE -o /output/` |
-
-Drag the FastQC node directly from the **Quality Control** section in the left sidebar — no typing needed.
-
-
-## 📊 Implementation Status
-
-### ✅ Fully Implemented
-
-| Feature | Notes |
-|---|---|
-| Visual canvas with zoom/pan | Infinite canvas, smooth animations |
-| Drag-and-drop nodes | From sidebar or bioinformatics library |
-| Docker Hub search | Real-time, official + community images |
-| Docker health monitoring | Collapsible banner, auto-detect, retry |
-| Docker image pull | Per-node progress bar with percentage |
-| Docker image tag picker | Type `image:tag` or edit Tag field |
-| Real Docker execution | Actual containers, not simulation |
-| Pre-execution validation | Checks empty canvas, missing commands, disconnected nodes |
-| Stop Pipeline | Kills all running containers instantly |
-| Topological sort execution | Kahn's algorithm, cycle detection |
-| Data flow between nodes | Volume mounts + `$INPUT_FILE` env vars |
-| Live log streaming | stdout/stderr in real time |
-| Auto-scroll execution panel | Always shows latest log line |
-| Copy logs to clipboard | One-click copy in panel header |
-| Keyboard shortcuts | Undo, Redo, Delete, Escape |
-| Click-to-delete connections | Click line → turns red → Delete key or button |
-| Duplicate Node | Right-click → Duplicate (full deep copy) |
-| Output directory management | Timestamped run folders |
-| Parameter sidebar | 5 parameter types, custom params |
-| Connection system | Bezier curves, port drag-and-drop |
-| Execution panel | Collapsible, resizable, auto-scroll |
-| Multi-tab pipelines | Chrome-style, per-tab isolation |
-| Session restore | Reopens last open pipelines on startup |
-| Auto-save (drag-end only) | Debounced, no per-pixel flood |
-| Undo / Redo | Per-tab, full history |
-| Export to Docker-Compose | ZIP with docker-compose.yml + env |
-| Apple Silicon support | Rosetta 2 for x86 images |
-| Bioinformatics library | 20 curated tools in 6 categories |
-
-
-## 🛠️ Technology Stack
-
-| Layer | Technology | Purpose |
-|---|---|---|
-| UI Framework | Flutter 3.5.3 | Cross-platform desktop UI |
-| Language | Dart 3.5.3 | Application logic |
-| State Management | GetX 4.x | Reactive state + dependency injection |
-| Docker | Docker CLI via `Process` API | Container execution & image management |
-| HTTP | `http` 1.2.2 | Docker Hub API calls |
-| IDs | `uuid` 4.5.1 | Unique node identifiers |
-| Serialization | `json_annotation` + `json_serializable` | Type-safe JSON models |
-| Code Generation | `build_runner` | JSON serialization codegen |
-| URLs | `url_launcher` | Open Docker download links |
-| File Paths | `path` + `path_provider` | Workspace & output directory management |
-
-
-## 🎨 Design System
-
-```
-Primary:    #6366F1  (Indigo)
-Success:    #10B981  (Emerald Green)
-Error:      #EF4444  (Red)
-Warning:    #F59E0B  (Amber)
-Running:    #8B5CF6  (Purple)
-Background: #F7F8FA  (Slate Gray)
-Canvas:     #0F172A  (Dark Navy)
+# 4. Production build
+flutter build macos       # .app bundle
+flutter build windows     # MSIX installer
+flutter build linux       # ELF binary
 ```
 
 
-## 🤝 Contributing
 
-Contributions are very welcome!
+## Usage Walkthrough
 
-1. Fork the repository
-2. Create a feature branch (`git checkout -b feature/my-feature`)
-3. Commit your changes (`git commit -m 'Add my feature'`)
-4. Push and open a Pull Request
-
-**Good first issues:**
-- Add a new bioinformatics tool to the library
-- Add a new built-in pipeline template
-- Improve the parameter sidebar for specific tools (e.g. FastQC options)
-- Write documentation for a specific tool's Docker command
+1. **Open Ricochet** — a blank canvas tab is created automatically
+2. **Search Docker Hub** in the sidebar search bar, or drag a built-in block (FastQC, BWA, etc.) onto the canvas
+3. **Configure each node** — click a node to open its parameter panel; set the command, image tag, volumes, etc.
+4. **Connect nodes** — drag from an output port on one node to an input port on another to establish data flow
+5. **Add an Input node** and select your FASTQ/FASTA/BAM file — this mounts the file into the first tool container at `/inputs/<filename>` (available inside the container as `$INPUT_FILE`)
+6. **Execute** — click the green **Execute** button; the terminal panel slides up showing live logs
+7. **View results** — output files are written to the workspace folder shown in the terminal log
+8. **Export** — click **Export Docker** to download a ready-to-run `docker-compose.yml` project
 
 
-## 📝 License
 
-MIT License — see [LICENSE](LICENSE) for details.
+## Workspace Location
 
+Ricochet stores all pipelines and run outputs in the platform Documents folder:
 
-## 🔧 macOS Docker Connectivity — Setup Guide
+| Platform | Path |
+|----------|------|
+| **macOS** | `~/Documents/Ricochet/` |
+| **Windows** | `C:\Users\<user>\Documents\Ricochet\` |
+| **Linux** | `~/Documents/Ricochet/` (or `$XDG_DOCUMENTS_DIR/Ricochet/`) |
 
-BioFlow communicates with Docker by calling the Docker CLI directly (not through Docker's API). This section explains **exactly how the connection works** and what you need to do on your Mac to make it work.
-
-
-### How BioFlow Finds and Connects to Docker
-
-When you click **Execute**, BioFlow does the following internally:
+Structure inside the workspace:
 
 ```
-1. Locate the Docker binary:
-   → tries /usr/local/bin/docker   (Intel Mac)
-   → tries /opt/homebrew/bin/docker (Apple Silicon / Homebrew)
-   → falls back to 'docker' on PATH
-
-2. Set connection environment:
-   DOCKER_HOST   = unix://$HOME/.docker/run/docker.sock
-   DOCKER_CONFIG = $HOME/.docker
-   HOME          = /Users/your-username  (real home, not sandboxed)
-
-3. Run: docker info   (to verify daemon is reachable)
-
-4. Run containers via: docker run --rm -i ...
+Ricochet/
+├── Pipelines/
+│   ├── My RNA-Seq Pipeline/
+│   │   └── pipeline.json
+│   └── Variant Calling/
+│       └── pipeline.json
+├── Runs/
+│   ├── run_2025-06-01T10-30-15/
+│   │   ├── FastQC_<id>/output.txt
+│   │   └── Trimmomatic_<id>/trimmed.fastq.gz
+│   └── run_2025-06-01T11-45-02/
+└── exports/
+    └── Ricochet-export_2025-06-01T12-00-00.zip
 ```
 
 
-### Step-by-Step Setup (macOS)
 
-#### Step 1 — Install Docker Desktop
+## ⚠️ Platform Notes & Known Limitations
 
-Download and install Docker Desktop for your Mac architecture:
+### All Platforms
 
-- **Apple Silicon (M1/M2/M3):** https://desktop.docker.com/mac/main/arm64/Docker.dmg
-- **Intel Mac:** https://desktop.docker.com/mac/main/amd64/Docker.dmg
+- Ricochet only supports **Directed Acyclic Graphs (DAGs)** — circular connections are blocked at execution time
+- Nodes must be **connected** in a multi-node pipeline — disconnected nodes are flagged before execution
+- Input files must exist on disk and be readable — Ricochet warns if biological sequence files appear suspiciously small (likely a failed download)
 
-After installing, open **Docker Desktop** from Applications and wait for the whale icon to appear in the menu bar (fully started).
+### macOS
 
+- **Apple Silicon (M1/M2/M3):** Docker Desktop must have Rosetta 2 emulation enabled for x86/amd64 images. Ricochet automatically injects `--platform linux/amd64` when pulling or running images. An info notice appears in the toolbar when Apple Silicon is detected.
+- **Sandboxed app:** Ricochet sets `DOCKER_HOST` and `DOCKER_CONFIG` explicitly to the real home directory so the Docker daemon can be reached from inside the macOS sandbox.
 
-#### Step 2 — Verify Docker CLI is accessible
+### Windows
 
-Open **Terminal** and run:
+- Docker **must** use the **WSL2 backend** (not Hyper-V). The WSL2 backend is required for reliable volume mounts and process management.
+- Windows host paths in volume mounts are automatically translated to the WSL-compatible format (e.g. `C:\Users\me\data.fastq` → `/c/Users/me/data.fastq`) — you do not need to do this manually.
+- The Docker executable is searched at `C:\Program Files\Docker\Docker\resources\bin\docker.exe` before falling back to `docker.exe` on `PATH`.
+- Open output directory uses `explorer.exe` to open the workspace folder.
 
-```bash
-which docker
-docker --version
-# Expected: Docker version 27.x.x, build xxxxxxx
-```
+### Linux
 
-If `which docker` returns nothing:
-
-```bash
-sudo ln -sf /Applications/Docker.app/Contents/Resources/bin/docker /usr/local/bin/docker
-docker --version
-```
-
-
-#### Step 3 — Confirm the Docker socket exists
-
-```bash
-ls -la ~/.docker/run/docker.sock
-# Expected: srwxr-xr-x ... /Users/yourname/.docker/run/docker.sock
-```
-
-If missing, Docker Desktop isn't fully started — open it and wait.
+- **Docker group membership is required.** If you installed Docker Engine (not Desktop), run `sudo usermod -aG docker $USER` and log out/in. Without this, the app cannot communicate with the Docker daemon.
+- **Socket auto-detection:** Ricochet checks for the Docker Desktop user-scoped socket (`~/.docker/run/docker.sock`) first, then falls back to the system socket (`/var/run/docker.sock`). If neither exists, it relies on the `docker` binary's own context discovery.
+- **ARM64 Linux** (Raspberry Pi 4/5, AWS Graviton, etc.): Ricochet automatically requests `--platform linux/arm64` so native arm64 images are preferred, avoiding emulation.
+- **x86_64 Linux** (most desktops/servers): no platform flag needed — native amd64 containers run without emulation.
+- Open output directory uses `xdg-open` to open the workspace folder in the default file manager.
+- GTK 3 development libraries are required to build the app — see [`requirements.txt`](requirements.txt).
 
 
-#### Step 4 — Set the HOME environment variable
 
-```bash
-echo $HOME
-# Should output: /Users/your-username  (NOT a /Library/Containers/ path)
-```
+## License
 
-If wrong, fix it:
-
-```bash
-export HOME="/Users/$(whoami)"
-# To make permanent:
-echo 'export HOME="/Users/$(whoami)"' >> ~/.zshrc && source ~/.zshrc
-```
-
-
-#### Step 5 — End-to-end Docker test
-
-```bash
-export DOCKER_HOST="unix://$HOME/.docker/run/docker.sock"
-docker run --rm alpine echo "BioFlow Docker connection works!"
-# Expected: BioFlow Docker connection works!
-```
-
-If this works, BioFlow pipeline execution will work too.
-
-
-### Quick Troubleshooting
-
-| Symptom | Fix |
-|---|---|
-| BioFlow banner shows "Docker not running" | Start Docker Desktop, wait for whale icon |
-| `docker: command not found` | Run `sudo ln -sf /Applications/Docker.app/Contents/Resources/bin/docker /usr/local/bin/docker` |
-| Socket file missing | Docker Desktop not fully started; restart it |
-| `Cannot connect to Docker daemon` | Set `DOCKER_HOST=unix://$HOME/.docker/run/docker.sock` and retry |
-| Apple Silicon: architecture error | Enable Rosetta in Docker Desktop settings |
-| App works in debug but not release | Ensure `com.apple.security.app-sandbox` is `false` in Release.entitlements |
-
-
-### macOS Entitlements (for developers building from source)
-
-```xml
-<!-- macos/Runner/Release.entitlements -->
-<key>com.apple.security.app-sandbox</key>
-<false/>                          <!-- MUST be false — sandbox blocks Process.run() -->
-<key>com.apple.security.network.client</key>
-<true/>                           <!-- Required for Docker Hub API calls -->
-<key>com.apple.security.files.user-selected.read-write</key>
-<true/>                           <!-- Required to read/write pipeline output files -->
-```
-
-> [!IMPORTANT]
-> If `app-sandbox` is set to `true`, BioFlow **cannot** execute Docker commands. The app will start but all pipeline runs will silently fail.
-
-
-### Apple Silicon (M1/M2/M3) Users
-
-BioFlow automatically detects Apple Silicon and adds `--platform linux/amd64` for x86-only images. **Rosetta 2 must be installed:**
-
-```bash
-softwareupdate --install-rosetta --agree-to-license
-```
-
-In Docker Desktop → Settings → General, ensure **"Use Rosetta for x86/amd64 emulation on Apple Silicon"** is checked.
-
-
-## 🙏 Acknowledgments
-
-- Built with [Flutter](https://flutter.dev)
-- Docker integration via [Docker Hub API](https://hub.docker.com)
-- Icons from [Material Design](https://material.io/icons)
-- Inspired by n8n's visual workflow UX
-- Bioinformatics tools via [BioContainers](https://biocontainers.pro)
-
-
-<div align="center">
-
-**Made with ❤️ for the bioinformatics community**
-
-⭐ Star this repo if it helps your research!
-
-</div>
+See [LICENSE](LICENSE) for details.
