@@ -14,7 +14,7 @@ class WorkspaceService {
   factory WorkspaceService() => _instance;
   WorkspaceService._internal();
   // ──────────────────────────────────────────────────────────────────────────
-  static const String _workspaceDirName = 'BioFlow';
+  static const String _workspaceDirName = 'Ricochet';
   static const String _pipelinesDirName = 'Pipelines';
   static const String _runsDirName = 'Runs';
 

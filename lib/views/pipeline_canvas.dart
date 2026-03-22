@@ -2,9 +2,9 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:get/get.dart';
-import 'package:bioflow/models/pipeline_node.dart';
+import 'package:Ricochet/models/pipeline_node.dart';
 import 'widgets/connection_painter.dart';
-import 'package:bioflow/views/widgets/parameter_sidebar.dart';
+import 'package:Ricochet/views/widgets/parameter_sidebar.dart';
 import '../controllers/pipeline_controller.dart';
 import 'widgets/pipeline_block_widget.dart';
 

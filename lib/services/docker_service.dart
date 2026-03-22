@@ -23,46 +23,85 @@ class DockerService {
     return _platformInfo!;
   }
 
-  /// Get environment variables for Docker commands
-  /// On macOS, we need to set HOME and DOCKER_CONFIG so Docker can find its configuration
-  /// The app is sandboxed, so we need to point to the real home directory
+  /// Get environment variables for Docker commands.
+  ///
+  /// - macOS: sandboxed apps need explicit HOME, DOCKER_CONFIG, and DOCKER_HOST
+  ///   so they can locate the Docker Desktop socket inside the real home dir.
+  /// - Linux: set DOCKER_HOST to the standard system socket so that the app
+  ///   can reach the Docker daemon even when the socket path is not in PATH.
+  /// - Windows: Docker Desktop with WSL2 exposes a named pipe automatically;
+  ///   no extra environment variables are required.
   Map<String, String> get _dockerEnvironment {
     final environment = <String, String>{};
+
     if (Platform.isMacOS) {
       final home = Platform.environment['HOME'];
       if (home != null) {
         environment['HOME'] = home;
 
-        // Point Docker to the actual config directory (not the sandboxed one)
-        // Extract the real home from the sandboxed path
+        // Point Docker to the actual config directory (not the sandboxed one).
+        // Extract the real home from the sandboxed path.
         final realHome = home.contains('/Library/Containers/')
             ? home.split('/Library/Containers/').first
             : home;
 
         environment['DOCKER_CONFIG'] = '$realHome/.docker';
 
-        // Directly use the Docker Desktop socket
+        // Directly use the Docker Desktop socket.
         environment['DOCKER_HOST'] = 'unix://$realHome/.docker/run/docker.sock';
 
-        print('🔧 Docker environment:');
+        print('🔧 Docker environment (macOS):');
         print('   HOME: $home');
         print('   DOCKER_CONFIG: ${environment['DOCKER_CONFIG']}');
         print('   DOCKER_HOST: ${environment['DOCKER_HOST']}');
       }
+    } else if (Platform.isLinux) {
+      // Standard Docker daemon socket on Linux.
+      // Docker Desktop for Linux may use a different socket under ~/.docker/run/;
+      // try the user-scoped one first, then fall back to the system socket.
+      final home = Platform.environment['HOME'];
+      final userSocket = home != null ? '$home/.docker/run/docker.sock' : null;
+      const systemSocket = '/var/run/docker.sock';
+
+      // Prefer the user-scoped Docker Desktop socket if it exists.
+      if (userSocket != null && File(userSocket).existsSync()) {
+        environment['DOCKER_HOST'] = 'unix://$userSocket';
+        print('🔧 Docker environment (Linux): using user-scoped socket');
+        print('   DOCKER_HOST: ${environment['DOCKER_HOST']}');
+      } else if (File(systemSocket).existsSync()) {
+        environment['DOCKER_HOST'] = 'unix://$systemSocket';
+        print('🔧 Docker environment (Linux): using system socket');
+        print('   DOCKER_HOST: ${environment['DOCKER_HOST']}');
+      } else {
+        // Neither socket is found — let the docker binary discover it via its
+        // own default logic (context / DOCKER_CONTEXT env var).
+        print('⚠️ Docker environment (Linux): no socket found, relying on docker binary defaults');
+      }
     }
+    // Windows: Docker Desktop with WSL2 backend is auto-discovered; no extra vars needed.
     return environment;
   }
 
-  /// Get possible Docker executable paths (macOS specific)
+  /// Get possible Docker executable paths, ordered by most-likely first per platform.
   List<String> get _possibleDockerPaths {
     if (Platform.isMacOS) {
       return [
-        '/usr/local/bin/docker', // Intel Mac default
+        '/usr/local/bin/docker',   // Intel Mac (Docker Desktop / Homebrew)
         '/opt/homebrew/bin/docker', // Apple Silicon Homebrew
-        'docker', // PATH fallback
+        'docker',                  // PATH fallback
       ];
     } else if (Platform.isWindows) {
-      return ['docker.exe'];
+      return [
+        r'C:\Program Files\Docker\Docker\resources\bin\docker.exe', // Docker Desktop default
+        'docker.exe',              // PATH fallback
+      ];
+    } else if (Platform.isLinux) {
+      return [
+        '/usr/bin/docker',         // apt/dnf/zypper system install
+        '/usr/local/bin/docker',   // manual / Docker-convenience-script install
+        '/snap/bin/docker',        // Snap install (Ubuntu)
+        'docker',                  // PATH fallback
+      ];
     }
     return ['docker'];
   }
@@ -667,7 +706,9 @@ class DockerService {
     }
   }
 
-  /// Get Docker Desktop download URL based on platform
+  /// Get Docker download URL based on platform.
+  /// macOS and Windows → Docker Desktop installer.
+  /// Linux → Docker Engine installation guide (no single binary installer).
   String getDockerDesktopDownloadUrl() {
     final platformInfo = _platformInfo;
 
@@ -678,12 +719,16 @@ class DockerService {
       return 'https://desktop.docker.com/mac/main/amd64/Docker.dmg';
     } else if (platformInfo?.isWindows == true) {
       return 'https://desktop.docker.com/win/main/amd64/Docker%20Desktop%20Installer.exe';
+    } else if (platformInfo?.isLinux == true) {
+      // Docker Desktop for Linux (requires distro-specific setup).
+      // The generic install guide covers Ubuntu, Debian, Fedora, and Arch.
+      return 'https://docs.docker.com/desktop/install/linux-install/';
     }
 
     return 'https://www.docker.com/products/docker-desktop';
   }
 
-  /// Get platform-specific help message for Docker installation
+  /// Get platform-specific help message for Docker installation.
   String getInstallationHelpMessage() {
     final platformInfo = _platformInfo;
 
@@ -692,14 +737,23 @@ class DockerService {
           'After installation, start Docker Desktop from Applications.';
     } else if (platformInfo?.isWindows == true) {
       return 'Download Docker Desktop for Windows and install it. '
-          'Make sure to enable WSL2 backend during installation. '
+          'Make sure to enable the WSL2 backend during installation. '
           'After installation, start Docker Desktop from the Start menu.';
+    } else if (platformInfo?.isLinux == true) {
+      return 'Install Docker Engine using your distro package manager, e.g.:\n'
+          '  Ubuntu/Debian : sudo apt-get install docker.io\n'
+          '  Fedora/RHEL   : sudo dnf install docker-ce\n'
+          '  Arch Linux    : sudo pacman -S docker\n\n'
+          'Then add yourself to the docker group so you can run Docker without sudo:\n'
+          '  sudo usermod -aG docker \$USER\n'
+          '  (log out and back in for the group change to take effect)\n\n'
+          'Alternatively, install Docker Desktop for Linux from the link above.';
     }
 
-    return 'Please install Docker Desktop for your platform.';
+    return 'Please install Docker for your platform.';
   }
 
-  /// Get platform-specific help message when Docker is stopped
+  /// Get platform-specific help message when Docker is installed but not running.
   String getStartDockerHelpMessage() {
     final platformInfo = _platformInfo;
 
@@ -707,8 +761,15 @@ class DockerService {
       return 'Open Docker Desktop from Applications or Spotlight search.';
     } else if (platformInfo?.isWindows == true) {
       return 'Open Docker Desktop from the Start menu or system tray.';
+    } else if (platformInfo?.isLinux == true) {
+      return 'Start the Docker daemon with one of these commands:\n'
+          '  systemd  : sudo systemctl start docker\n'
+          '  SysV     : sudo service docker start\n\n'
+          'To start Docker Desktop for Linux, open it from your application launcher.\n\n'
+          'Tip: enable Docker to start automatically on boot:\n'
+          '  sudo systemctl enable docker';
     }
 
-    return 'Please start Docker Desktop.';
+    return 'Please start the Docker daemon.';
   }
 }

@@ -1290,7 +1290,7 @@ class PipelineController extends GetxController {
           .split('.')[0];
       final filepath = await _workspaceService.saveExportZip(
         zipBytes,
-        'bioflow-export_$timestamp.zip',
+        'Ricochet-export_$timestamp.zip',
       );
 
       // Close dialog

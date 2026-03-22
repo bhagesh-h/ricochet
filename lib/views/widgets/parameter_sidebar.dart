@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:get/get.dart';
 import 'package:file_picker/file_picker.dart';
-import 'package:bioflow/models/pipeline_node.dart';
+import 'package:Ricochet/models/pipeline_node.dart';
 import '../../controllers/pipeline_controller.dart';
 import '../../controllers/docker_search_controller.dart';
 import '../../models/docker_image.dart';
