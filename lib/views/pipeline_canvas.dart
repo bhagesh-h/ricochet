@@ -291,22 +291,8 @@ class _PipelineCanvasState extends State<PipelineCanvas>
 
     if (hitId != null) {
       ctrl.selectConnection(hitId);
-      // Show delete prompt
-      Get.snackbar(
-        'Connection Selected',
-        'Press Delete / Backspace to remove this connection',
-        snackPosition: SnackPosition.BOTTOM,
-        duration: const Duration(seconds: 3),
-        backgroundColor: const Color(0xFF1E293B),
-        colorText: Colors.white,
-        mainButton: TextButton(
-          onPressed: () {
-            ctrl.deleteConnection(hitId!);
-            Get.closeCurrentSnackbar();
-          },
-          child: const Text('DELETE', style: TextStyle(color: Color(0xFFEF4444), fontWeight: FontWeight.bold)),
-        ),
-      );
+      // Return keyboard focus to the canvas so Delete/Backspace is captured
+      _focusNode.requestFocus();
     } else {
       ctrl.selectConnection(null);
     }
