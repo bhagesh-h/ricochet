@@ -76,7 +76,7 @@ class _PipelineCanvasState extends State<PipelineCanvas>
     return Focus(
       focusNode: _focusNode,
       autofocus: true,
-      onKeyEvent: (node, event) => _handleKeyEvent(event, controller),
+      onKeyEvent: (node, event) => _handleKeyEvent(node, event, controller),
       child: GestureDetector(
         // Tap on empty canvas → deselect node & hovered connection
         onTap: () {
@@ -193,8 +193,11 @@ class _PipelineCanvasState extends State<PipelineCanvas>
   }
 
   // ─── Keyboard shortcut handler ─────────────────────────────────────────────
-  KeyEventResult _handleKeyEvent(KeyEvent event, PipelineController ctrl) {
+  KeyEventResult _handleKeyEvent(FocusNode node, KeyEvent event, PipelineController ctrl) {
     if (event is! KeyDownEvent) return KeyEventResult.ignored;
+
+    // Do not intercept keystrokes if the user is typing in a text field
+    if (!node.hasPrimaryFocus) return KeyEventResult.ignored;
 
     final isCtrl = HardwareKeyboard.instance.isMetaPressed ||
         HardwareKeyboard.instance.isControlPressed;
@@ -647,7 +650,6 @@ class _DraggableNodeState extends State<_DraggableNode> {
         cursor: SystemMouseCursors.move,
         child: Container(
           width: 180,
-          height: 60,
           decoration: BoxDecoration(
             color: _isDragging ? Colors.white.withOpacity(0.9) : Colors.white,
             borderRadius: BorderRadius.circular(12),

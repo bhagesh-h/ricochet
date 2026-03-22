@@ -17,6 +17,8 @@ class _ToolSidebarState extends State<ToolSidebar> {
   final TextEditingController _searchTextController = TextEditingController();
   final FocusNode _searchFocusNode = FocusNode();
 
+  double _width = 320.0;
+
   // Built-in tools and bioinformatics library
   final List<Map<String, dynamic>> tools = const [
     {
@@ -105,8 +107,13 @@ class _ToolSidebarState extends State<ToolSidebar> {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      width: 320,
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        SizedBox(
+          width: _width,
+          child: Container(
       decoration: const BoxDecoration(
         color: Colors.white,
         border: Border(right: BorderSide(color: Color(0xFFE2E8F0))),
@@ -145,10 +152,11 @@ class _ToolSidebarState extends State<ToolSidebar> {
                         ),
                         borderRadius: BorderRadius.circular(8),
                       ),
-                      child: const Icon(
-                        Icons.biotech,
+                      child: Image.asset(
+                        'assets/logo-nobg.png',
                         color: Colors.white,
-                        size: 20,
+                        width: 20,
+                        height: 20,
                       ),
                     ),
                     const SizedBox(width: 12),
@@ -289,8 +297,25 @@ class _ToolSidebarState extends State<ToolSidebar> {
           ),
         ],
       ),
-    );
-  }
+    ),
+  ),
+  MouseRegion(
+    cursor: SystemMouseCursors.resizeLeftRight,
+    child: GestureDetector(
+      onHorizontalDragUpdate: (details) {
+        setState(() {
+          _width = (_width + details.delta.dx).clamp(200.0, 600.0);
+        });
+      },
+      child: Container(
+        width: 6,
+        color: Colors.transparent,
+      ),
+    ),
+  ),
+],
+);
+}
 
   Widget _buildBuiltInTools() {
     // Group tools by category

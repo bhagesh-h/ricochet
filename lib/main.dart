@@ -59,7 +59,7 @@ class MyApp extends StatelessWidget {
                   ),
                   borderRadius: BorderRadius.circular(8),
                 ),
-                child: const Icon(Icons.biotech, color: Colors.white, size: 20),
+                child: Image.asset('assets/logo-nobg.png', width: 20, height: 20, color: Colors.white),
               ),
               const SizedBox(width: 12),
               const Text(
