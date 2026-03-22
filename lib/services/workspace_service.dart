@@ -84,11 +84,22 @@ class WorkspaceService {
   }
 
   /// Create a new run directory for this execution
-  Future<Directory> createRunDirectory() async {
+  Future<Directory> createRunDirectory({String? pipelineName}) async {
     final runsDir = await getRunsDirectory();
     final timestamp =
         DateTime.now().toIso8601String().replaceAll(':', '-').split('.')[0];
-    final runDirPath = path.join(runsDir.path, 'run_$timestamp');
+    final pipelineSegment = _sanitizeRunSegment(pipelineName);
+
+    final baseName = pipelineSegment.isEmpty
+        ? 'run_$timestamp'
+        : 'run_${pipelineSegment}_$timestamp';
+
+    var runDirPath = path.join(runsDir.path, baseName);
+    var attempt = 1;
+    while (await Directory(runDirPath).exists()) {
+      attempt++;
+      runDirPath = path.join(runsDir.path, '${baseName}_$attempt');
+    }
 
     _currentRunDir = Directory(runDirPath);
     await _currentRunDir!.create(recursive: true);
@@ -108,9 +119,20 @@ class WorkspaceService {
   /// Reset the cached run directory so the NEXT call to [getCurrentRunDirectory]
   /// creates a brand-new timestamped folder.  Call this at the start of every
   /// pipeline execution so repeated runs never share a workspace directory.
-  Future<Directory> startNewRun() async {
+  Future<Directory> startNewRun({String? pipelineName}) async {
     _currentRunDir = null;
-    return await createRunDirectory();
+    return await createRunDirectory(pipelineName: pipelineName);
+  }
+
+  String _sanitizeRunSegment(String? value) {
+    if (value == null) return '';
+    final trimmed = value.trim();
+    if (trimmed.isEmpty) return '';
+
+    return trimmed
+        .replaceAll(RegExp(r'[^a-zA-Z0-9_-]'), '_')
+        .replaceAll(RegExp(r'_+'), '_')
+        .replaceAll(RegExp(r'^_+|_+$'), '');
   }
 
   /// Create a node-specific output directory

@@ -5,6 +5,7 @@ import 'package:get/get.dart';
 import '../models/pipeline_node.dart';
 import '../services/workspace_service.dart';
 import 'pipeline_controller.dart';
+import 'pipeline_tabs_controller.dart';
 
 class ExecutionController extends GetxController {
   final log = <String>[].obs;
@@ -15,6 +16,15 @@ class ExecutionController extends GetxController {
   final Map<String, List<String>> _logsByTab = {};
   final Map<String, bool> _isRunningByTab = {};
   String? _currentTabId;
+
+  String _resolvePipelineName(String tabId) {
+    if (!Get.isRegistered<PipelineTabsController>()) return 'Pipeline';
+    final tabsCtrl = Get.find<PipelineTabsController>();
+    final tab = tabsCtrl.tabs.firstWhereOrNull((t) => t.id == tabId);
+    final name = tab?.name.trim();
+    if (name == null || name.isEmpty) return 'Pipeline';
+    return name;
+  }
 
   void clearLogsAndSwitchToActiveTab(String? tabId) {
     if (tabId == null) return;
@@ -180,7 +190,10 @@ class ExecutionController extends GetxController {
     // Create a fresh run directory for every execution.  This prevents outputs
     // from different runs sharing the same folder, which would leave stale
     // output.txt files from a prior aborted run appearing as the current result.
-    final runDir = await WorkspaceService().startNewRun();
+    final runPipelineName = _resolvePipelineName(tabId);
+    final runDir = await WorkspaceService().startNewRun(
+      pipelineName: runPipelineName,
+    );
     _addLog(tabId, '📂 Run workspace: ${runDir.path}');
 
     _addLog(tabId, '🚀 Pipeline execution started');
