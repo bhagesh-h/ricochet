@@ -338,16 +338,47 @@ class _PipelineBlockWidgetState extends State<PipelineBlockWidget>
                   );
                 }
 
-                // Show Retry button on hover if error/failed
+                // Show contextual recovery action on hover when node failed.
                 if (_isHovering &&
                     (widget.node.status == BlockStatus.error ||
                         widget.node.status == BlockStatus.failed)) {
+                  final isImagePullFailure =
+                      widget.node.failureScope == NodeFailureScope.imagePull;
+
+                  if (isImagePullFailure) {
+                    return Tooltip(
+                      message: widget.node.downloadStatus ?? 'Image pull failed',
+                      preferBelow: false,
+                      child: InkWell(
+                        onTap: () {
+                          Get.find<PipelineController>().retryDownload(
+                            widget.node.id,
+                          );
+                        },
+                        child: Container(
+                          width: 24,
+                          height: 24,
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFEF4444).withOpacity(0.1),
+                            shape: BoxShape.circle,
+                          ),
+                          child: const Icon(
+                            Icons.refresh_rounded,
+                            color: Color(0xFFEF4444),
+                            size: 16,
+                          ),
+                        ),
+                      ),
+                    );
+                  }
+
                   return Tooltip(
-                    message: widget.node.downloadStatus ?? 'Download failed',
+                    message: widget.node.executionStatus ??
+                        'Execution failed. Fix command and run again.',
                     preferBelow: false,
                     child: InkWell(
                       onTap: () {
-                        Get.find<PipelineController>().retryDownload(
+                        Get.find<PipelineController>().executeNode(
                           widget.node.id,
                         );
                       },
@@ -355,12 +386,12 @@ class _PipelineBlockWidgetState extends State<PipelineBlockWidget>
                         width: 24,
                         height: 24,
                         decoration: BoxDecoration(
-                          color: const Color(0xFFEF4444).withOpacity(0.1),
+                          color: widget.node.primaryColor.withOpacity(0.1),
                           shape: BoxShape.circle,
                         ),
-                        child: const Icon(
-                          Icons.refresh_rounded,
-                          color: Color(0xFFEF4444),
+                        child: Icon(
+                          Icons.play_arrow_rounded,
+                          color: widget.node.primaryColor,
                           size: 16,
                         ),
                       ),
@@ -391,7 +422,11 @@ class _PipelineBlockWidgetState extends State<PipelineBlockWidget>
                     ),
                   );
                 }
-                return _buildStatusIndicator();
+                return Tooltip(
+                  message: _statusTooltipMessage(),
+                  preferBelow: false,
+                  child: _buildStatusIndicator(),
+                );
               },
             ),
           ),
@@ -446,6 +481,31 @@ class _PipelineBlockWidgetState extends State<PipelineBlockWidget>
         ],
       ),
     );
+  }
+
+  String _statusTooltipMessage() {
+    switch (widget.node.status) {
+      case BlockStatus.idle:
+        return 'Idle';
+      case BlockStatus.checking:
+        return 'Checking image availability...';
+      case BlockStatus.downloading:
+        return widget.node.downloadStatus ?? 'Downloading image...';
+      case BlockStatus.ready:
+        return widget.node.downloadStatus ?? 'Image ready';
+      case BlockStatus.pending:
+        return 'Waiting for upstream nodes';
+      case BlockStatus.running:
+        return 'Execution in progress...';
+      case BlockStatus.success:
+        return widget.node.executionStatus ?? 'Execution completed';
+      case BlockStatus.failed:
+      case BlockStatus.error:
+        if (widget.node.failureScope == NodeFailureScope.imagePull) {
+          return widget.node.downloadStatus ?? 'Image pull failed';
+        }
+        return widget.node.executionStatus ?? 'Execution failed';
+    }
   }
 
   Widget _buildStatusIndicator() {

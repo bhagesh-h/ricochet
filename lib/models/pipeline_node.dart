@@ -49,6 +49,14 @@ enum BlockStatus {
   error, // Configuration or download error
 }
 
+enum NodeFailureScope {
+  none,
+  imagePull,
+  execution,
+  configuration,
+  canceled,
+}
+
 @JsonSerializable(explicitToJson: true)
 
 class BlockParameter {
@@ -113,6 +121,12 @@ class PipelineNode {
   
   @JsonKey(includeFromJson: false, includeToJson: false)
   bool isImageLocal;
+
+  @JsonKey(includeFromJson: false, includeToJson: false)
+  NodeFailureScope failureScope;
+
+  @JsonKey(includeFromJson: false, includeToJson: false)
+  String? executionStatus;
   
   // Export Settings
   String? outputFileName;
@@ -137,6 +151,8 @@ class PipelineNode {
     this.downloadProgress = 0.0,
     this.downloadStatus,
     this.isImageLocal = false,
+    this.failureScope = NodeFailureScope.none,
+    this.executionStatus,
     this.outputFileName,
     this.isAggregator = false,
     List<String>? logs,

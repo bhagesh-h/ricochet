@@ -636,6 +636,7 @@ class PipelineController extends GetxController {
         // Image is cached
         node.status = BlockStatus.ready;
         node.isImageLocal = true;
+        node.failureScope = NodeFailureScope.none;
         node.downloadStatus = 'Image ready';
         update();
         print('✅ Image ${node.dockerImage} is already cached');
@@ -643,6 +644,7 @@ class PipelineController extends GetxController {
         // Need to pull image
         node.status = BlockStatus.downloading;
         node.downloadProgress = 0.0;
+        node.failureScope = NodeFailureScope.none;
         node.downloadStatus = 'Starting download...';
         update([node.id]); // Update only this node
 
@@ -658,14 +660,18 @@ class PipelineController extends GetxController {
           if (progress.status == PullStatus.complete) {
             node.status = BlockStatus.ready;
             node.isImageLocal = true;
+            node.failureScope = NodeFailureScope.none;
           } else if (progress.status == PullStatus.error) {
             node.status = BlockStatus.error;
+            node.failureScope = NodeFailureScope.imagePull;
           }
 
           update([node.id]); // Update only this node
         }
       }
     } catch (e) {
+      node.status = BlockStatus.error;
+      node.failureScope = NodeFailureScope.imagePull;
       node.downloadStatus = 'Error: $e';
       update([node.id]); // Update only this node
     }
@@ -680,6 +686,8 @@ class PipelineController extends GetxController {
     node.status = BlockStatus.checking;
     node.downloadProgress = 0.0;
     node.downloadStatus = 'Retrying download...';
+    node.executionStatus = null;
+    node.failureScope = NodeFailureScope.none;
     node.isImageLocal = false;
     update([node.id]);
 
@@ -695,6 +703,12 @@ class PipelineController extends GetxController {
     final node = nodes.firstWhereOrNull((n) => n.id == nodeId);
     if (node == null) return;
 
+    // Reset execution-facing state for this run
+    node.executionStatus = null;
+    if (node.status != BlockStatus.downloading) {
+      node.failureScope = NodeFailureScope.none;
+    }
+
     // ─── Special handling: Input node (file picker — no Docker container) ──────
     if (node.category == BlockCategory.input) {
       setNodeStatus(nodeId, BlockStatus.running);
@@ -708,6 +722,8 @@ class PipelineController extends GetxController {
       if (filePath.isEmpty) {
         node.logs.add(
             '[ERROR] No file selected. Open the Input node parameters and choose a file.');
+        node.executionStatus = 'Input node is not configured: no file selected.';
+        node.failureScope = NodeFailureScope.configuration;
         setNodeStatus(nodeId, BlockStatus.failed);
         update([nodeId]);
         return;
@@ -718,6 +734,8 @@ class PipelineController extends GetxController {
         node.logs.add('[ERROR] File not found: $filePath');
         node.logs
             .add('[ERROR] Make sure the path is correct and the file exists.');
+        node.executionStatus = 'Input file was not found on disk.';
+        node.failureScope = NodeFailureScope.configuration;
         setNodeStatus(nodeId, BlockStatus.failed);
         update([nodeId]);
         return;
@@ -764,6 +782,8 @@ class PipelineController extends GetxController {
         ));
       }
 
+      node.executionStatus = 'Input file prepared successfully.';
+      node.failureScope = NodeFailureScope.none;
       setNodeStatus(nodeId, BlockStatus.success);
       update([nodeId]);
       return;
@@ -778,6 +798,8 @@ class PipelineController extends GetxController {
       if (inputFiles == null || inputFiles.isEmpty) {
         node.logs.add(
             '[ERROR] Output node received no data. Connect it to an upstream node.');
+        node.executionStatus = 'Output node received no upstream input.';
+        node.failureScope = NodeFailureScope.configuration;
         setNodeStatus(nodeId, BlockStatus.failed);
         update([nodeId]);
         return;
@@ -803,6 +825,8 @@ class PipelineController extends GetxController {
         ));
       }
 
+      node.executionStatus = 'Output node resolved pipeline output successfully.';
+      node.failureScope = NodeFailureScope.none;
       setNodeStatus(nodeId, BlockStatus.success);
       update([nodeId]);
       return;
@@ -815,6 +839,8 @@ class PipelineController extends GetxController {
       node.logs.add('[ERROR] No Docker image specified for "${node.title}".');
       node.logs.add(
           '[ERROR] Set the Docker Image field in the node parameters, then re-run.');
+      node.executionStatus = 'Docker image is not configured for this node.';
+      node.failureScope = NodeFailureScope.configuration;
       setNodeStatus(nodeId, BlockStatus.failed);
       update([nodeId]);
       return;
@@ -822,6 +848,7 @@ class PipelineController extends GetxController {
 
     try {
       setNodeStatus(nodeId, BlockStatus.running);
+      node.failureScope = NodeFailureScope.none;
 
       // Clear previous logs
       node.logs.clear();
@@ -1090,15 +1117,21 @@ class PipelineController extends GetxController {
 
       if (exitCode == 0) {
         node.status = BlockStatus.success;
+        node.executionStatus = 'Execution completed successfully.';
+        node.failureScope = NodeFailureScope.none;
       } else {
         // If manually stopped, it might have a specific exit code (e.g. 137)
         // For now just mark as failed if not 0
         node.status = BlockStatus.failed;
+        node.executionStatus = 'Execution failed (exit code $exitCode).';
+        node.failureScope = NodeFailureScope.execution;
       }
       update([node.id]);
     } catch (e) {
       print('❌ Error executing node: $e');
       node.status = BlockStatus.error;
+      node.executionStatus = 'Execution error: $e';
+      node.failureScope = NodeFailureScope.execution;
       update([node.id]);
     }
   }
@@ -1112,11 +1145,14 @@ class PipelineController extends GetxController {
       if (node.status == BlockStatus.downloading && node.dockerImage != null) {
         print('🛑 Stopping pull for node ${node.title}...');
         await _dockerService.stopPull(node.dockerImage!);
-        node.downloadStatus = 'Canceled by user';
+        node.downloadStatus = 'Pull canceled by user';
+        node.failureScope = NodeFailureScope.canceled;
       } else if (node.status == BlockStatus.running) {
         print('🛑 Stopping container for node ${node.title}...');
         await _dockerService.stopContainer(node.id);
         node.logs.add('[SYSTEM] Execution stopped by user');
+        node.executionStatus = 'Execution canceled by user.';
+        node.failureScope = NodeFailureScope.canceled;
       }
 
       node.status = BlockStatus.failed;
