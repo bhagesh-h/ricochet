@@ -1487,4 +1487,21 @@ class PipelineController extends GetxController {
       });
     }
   }
+  /// Generates a dummy node to fetch original default parameters that are missing from the active node.
+  List<BlockParameter> getMissingDefaultParameters(PipelineNode activeNode) {
+    PipelineNode dummy;
+    if (activeNode.dockerImage != null && activeNode.title == activeNode.dockerImage) {
+        dummy = _createDockerNode(activeNode.dockerImage!, Offset.zero, tag: 'latest');
+    } else {
+        String type = activeNode.title;
+        if (type == 'BWA Aligner') type = 'BWA';
+        else if (type == 'STAR Aligner') type = 'STAR';
+        else if (type == 'Input Data') type = 'Input';
+        else if (type == 'Output Results') type = 'Output';
+        dummy = _createNodeFromType(type, Offset.zero);
+    }
+    
+    final currentKeys = activeNode.parameters.map((p) => p.key).toSet();
+    return dummy.parameters.where((p) => !currentKeys.contains(p.key)).toList();
+  }
 }
