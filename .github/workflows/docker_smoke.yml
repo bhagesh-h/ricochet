@@ -1,0 +1,70 @@
+name: Docker Smoke
+
+# Nightly scheduled smoke — verifies real Docker CLI interaction.
+# Also triggerable manually via workflow_dispatch.
+on:
+  schedule:
+    - cron: "0 2 * * *" # 02:00 UTC daily
+  workflow_dispatch:
+
+jobs:
+  docker-smoke:
+    name: Real Docker smoke tests
+    runs-on: ubuntu-latest
+
+    steps:
+      # ── Checkout ────────────────────────────────────────────────────────────
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # ── Docker setup (already present on ubuntu-latest) ──────────────────
+      - name: Verify Docker is available
+        run: docker --version && docker info
+
+      # ── Pre-pull the smoke image to fill the layer cache ─────────────────
+      - name: Pre-pull staphb/fastqc
+        run: docker pull staphb/fastqc:latest
+
+      # ── Flutter setup ───────────────────────────────────────────────────────
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: "3.x"
+          channel: stable
+          cache: true
+
+      # ── Pub cache ───────────────────────────────────────────────────────────
+      - name: Cache pub packages
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.pub-cache
+          key: ${{ runner.os }}-pub-${{ hashFiles('**/pubspec.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-pub-
+
+      - name: flutter pub get
+        run: flutter pub get
+
+      # ── Desktop smoke: all unit tests + any Docker integration tests ───────
+      - name: Run full test suite
+        run: flutter test test/ --concurrency=4
+        env:
+          # Allow the process runner to reach the Docker daemon socket on Linux CI.
+          DOCKER_HOST: "unix:///var/run/docker.sock"
+        continue-on-error: true
+        id: smoke
+
+      # ── Upload execution trace artifacts on failure ──────────────────────
+      - name: Upload trace artifacts on failure
+        if: steps.smoke.outcome == 'failure'
+        uses: actions/upload-artifact@v4
+        with:
+          name: execution-traces-${{ github.run_id }}
+          path: "**/*.trace.json"
+          retention-days: 14
+
+      # ── Fail the job if tests failed ──────────────────────────────────────
+      - name: Propagate test failure
+        if: steps.smoke.outcome == 'failure'
+        run: exit 1

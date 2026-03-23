@@ -1,20 +1,32 @@
 import 'dart:io';
 import 'dart:async';
 import 'dart:convert';
+import 'package:flutter/foundation.dart';
 import '../models/docker_info.dart';
 import '../models/docker_pull_progress.dart';
+import 'process_runner.dart';
 
 /// Service for interacting with Docker CLI
 /// Handles platform-specific Docker operations for macOS and Windows
 class DockerService {
-  // Singleton pattern
+  // Singleton pattern — kept for backward compatibility with existing controllers.
+  // For tests, use [DockerService.withRunner] to obtain an isolated instance.
   static final DockerService _instance = DockerService._internal();
   factory DockerService() => _instance;
-  DockerService._internal();
+  DockerService._internal() : _processRunner = const SystemProcessRunner();
+
+  /// Creates a non-singleton instance with an injected [ProcessRunner].
+  ///
+  /// Use this in tests to supply a [FakeProcessRunner].
+  @visibleForTesting
+  DockerService.withRunner(ProcessRunner processRunner)
+      : _processRunner = processRunner;
+
+  final ProcessRunner _processRunner;
 
   PlatformInfo? _platformInfo;
   
-  // Track active processes for reliable cleanup (fix #6)
+  // Track active processes for reliable cleanup
   final Map<String, Process> _activeProcesses = {};
 
   /// Get platform information (cached)
@@ -110,10 +122,10 @@ class DockerService {
   Future<String?> _findDockerExecutable() async {
     for (final path in _possibleDockerPaths) {
       try {
-        final result = await Process.run(
+        final result = await _processRunner.run(
           path,
           ['--version'],
-          runInShell: false, // Don't use shell to avoid PATH issues
+          runInShell: false,
         );
         if (result.exitCode == 0) {
           print('✅ Found Docker at: $path');
@@ -175,7 +187,7 @@ class DockerService {
 
       print('🔍 Checking if Docker daemon is running...');
 
-      final result = await Process.run(
+      final result = await _processRunner.run(
         dockerPath,
         ['info'],
         runInShell: false,
@@ -200,7 +212,7 @@ class DockerService {
       final dockerPath = await getDockerExecutablePath();
       if (dockerPath == null) return null;
 
-      final result = await Process.run(
+      final result = await _processRunner.run(
         dockerPath,
         ['info'],
         runInShell: false,
@@ -224,7 +236,7 @@ class DockerService {
       final dockerPath = await getDockerExecutablePath();
       if (dockerPath == null) return null;
 
-      final result = await Process.run(
+      final result = await _processRunner.run(
         dockerPath,
         ['--version'],
         runInShell: false,
@@ -270,7 +282,7 @@ class DockerService {
       final dockerPath = await getDockerExecutablePath();
       if (dockerPath == null) return false;
 
-      final result = await Process.run(
+      final result = await _processRunner.run(
         dockerPath,
         ['images', '-q', imageName],
         runInShell: false,
@@ -293,7 +305,7 @@ class DockerService {
       final dockerPath = await getDockerExecutablePath();
       if (dockerPath == null) return [];
 
-      final result = await Process.run(
+      final result = await _processRunner.run(
         dockerPath,
         ['images', '--format', '{{.Repository}}:{{.Tag}}'],
         runInShell: false,
@@ -329,7 +341,7 @@ class DockerService {
       }
 
       // Start the pull process
-      final process = await Process.start(
+      final process = await _processRunner.start(
         dockerPath,
         ['pull', imageName],
         runInShell: false,
@@ -542,7 +554,7 @@ class DockerService {
 
     print('🚀 Running container: $dockerPath ${args.join(' ')}');
 
-    final process = await Process.start(
+    final process = await _processRunner.start(
       dockerPath,
       args,
       runInShell: false,
@@ -588,7 +600,7 @@ class DockerService {
     // 2. Kill the Docker container itself via CLI
     if (dockerPath != null) {
       print('🛑 Stopping Docker container via CLI: $containerName');
-      await Process.run(
+      await _processRunner.run(
         dockerPath,
         ['kill', containerName],
         runInShell: false,
@@ -674,8 +686,8 @@ class DockerService {
 
     try {
       // Get current user ID
-      final uidResult = await Process.run('id', ['-u'], runInShell: true);
-      final gidResult = await Process.run('id', ['-g'], runInShell: true);
+      final uidResult = await _processRunner.run('id', ['-u'], runInShell: true);
+      final gidResult = await _processRunner.run('id', ['-g'], runInShell: true);
 
       if (uidResult.exitCode == 0 && gidResult.exitCode == 0) {
         final uid = uidResult.stdout.toString().trim();
@@ -695,7 +707,7 @@ class DockerService {
       final dockerPath = await getDockerExecutablePath();
       if (dockerPath == null) return false;
 
-      final result = await Process.run(
+      final result = await _processRunner.run(
         dockerPath,
         ['ps'],
         runInShell: false,

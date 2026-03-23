@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'package:flutter/foundation.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:path/path.dart' as path;
 
@@ -8,12 +9,29 @@ import 'package:path/path.dart' as path;
 /// same instance so that all controllers share a single [_currentRunDir].
 /// Without this guarantee, [PipelineController] and [ExecutionController]
 /// would each hold their own run-directory pointer that can diverge.
+///
+/// For tests, use [WorkspaceService.withPath] to obtain an isolated instance
+/// rooted at a temporary directory (via [TestWorkspaceFactory]).
 class WorkspaceService {
-  // ── Singleton boilerplate ──────────────────────────────────────────────────
-  static final WorkspaceService _instance = WorkspaceService._internal();
+  // ── Singleton boilerplate ─────────────────────────────────────────────────────
+  static final WorkspaceService _instance = WorkspaceService._internal(null);
   factory WorkspaceService() => _instance;
-  WorkspaceService._internal();
-  // ──────────────────────────────────────────────────────────────────────────
+  WorkspaceService._internal(this._overrideBasePath);
+  // ────────────────────────────────────────────────────────────────────────────
+
+  /// Creates a non-singleton instance rooted at [basePath].
+  ///
+  /// Use this in tests by passing a directory created with [TestWorkspaceFactory]:
+  /// ```dart
+  /// final testDir = await TestWorkspaceFactory.create();
+  /// final service = WorkspaceService.withPath(testDir.path);
+  /// ```
+  @visibleForTesting
+  WorkspaceService.withPath(String basePath) : _overrideBasePath = basePath;
+
+  /// When non-null, all directories are rooted here instead of the system
+  /// application documents directory.  Set only by [WorkspaceService.withPath].
+  final String? _overrideBasePath;
   static const String _workspaceDirName = 'Ricochet';
   static const String _pipelinesDirName = 'Pipelines';
   static const String _runsDirName = 'Runs';
@@ -27,8 +45,15 @@ class WorkspaceService {
   Future<Directory> getWorkspaceDirectory() async {
     if (_workspaceDir != null) return _workspaceDir!;
 
-    final appDocDir = await getApplicationDocumentsDirectory();
-    final workspacePath = path.join(appDocDir.path, _workspaceDirName);
+    final String basePath;
+    if (_overrideBasePath != null) {
+      basePath = _overrideBasePath;
+    } else {
+      final appDocDir = await getApplicationDocumentsDirectory();
+      basePath = appDocDir.path;
+    }
+
+    final workspacePath = path.join(basePath, _workspaceDirName);
 
     _workspaceDir = Directory(workspacePath);
     if (!await _workspaceDir!.exists()) {

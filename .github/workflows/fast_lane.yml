@@ -1,0 +1,76 @@
+name: Fast Lane
+
+# Runs on every push and pull request. Fail fast — cheap checks before slow ones.
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+    branches: ["**"]
+
+jobs:
+  fast-lane:
+    name: Analyze · Format · Unit Tests
+    runs-on: ubuntu-latest
+
+    steps:
+      # ── Checkout ────────────────────────────────────────────────────────────
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # ── Flutter setup ───────────────────────────────────────────────────────
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: "3.x"
+          channel: stable
+          cache: true
+
+      # ── Pub cache ───────────────────────────────────────────────────────────
+      - name: Cache pub packages
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.pub-cache
+          key: ${{ runner.os }}-pub-${{ hashFiles('**/pubspec.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-pub-
+
+      # ── Get dependencies ────────────────────────────────────────────────────
+      - name: flutter pub get
+        run: flutter pub get
+
+      # ── Static analysis (fail on any issue) ─────────────────────────────────
+      - name: flutter analyze
+        run: flutter analyze --fatal-infos
+
+      # ── Formatting (fail on any change) ────────────────────────────────────
+      - name: dart format check
+        run: dart format --set-exit-if-changed .
+
+      # ── Unit tests: models ──────────────────────────────────────────────────
+      - name: Unit tests — models
+        run: flutter test test/models/ --concurrency=4
+
+      # ── Unit tests: services ────────────────────────────────────────────────
+      - name: Unit tests — services
+        run: flutter test test/services/ --concurrency=4
+
+      # ── Unit tests: controllers ──────────────────────────────────────────────
+      - name: Unit tests — controllers
+        run: flutter test test/controllers/ --concurrency=4
+
+      # ── Coverage summary ─────────────────────────────────────────────────────
+      - name: Combined coverage report
+        run: |
+          flutter test \
+            test/models/ test/services/ test/controllers/ \
+            --coverage \
+            --concurrency=4
+        continue-on-error: true
+
+      - name: Upload coverage to Codecov
+        if: always()
+        uses: codecov/codecov-action@v4
+        with:
+          files: coverage/lcov.info
+          fail_ci_if_error: false
