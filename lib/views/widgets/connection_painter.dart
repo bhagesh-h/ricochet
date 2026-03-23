@@ -100,7 +100,6 @@ class ConnectionPainter extends CustomPainter {
 
     // Arrowhead properties
     const arrowLength = 12.0;
-    const arrowWidth = 8.0;
 
     // Calculate points for the arrowhead triangle
     final point1 = Offset(

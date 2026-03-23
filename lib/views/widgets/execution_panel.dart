@@ -488,6 +488,41 @@ class _ExecutionPanelState extends State<ExecutionPanel> {
     );
   }
 
+  // ─── Log-line color mapping ─────────────────────────────────────────────────
+  Color _logLineColor(String line) {
+    // Success / completion
+    if (line.contains('✅') || line.contains('🎉') || line.contains('complete')) {
+      return const Color(0xFF10B981);
+    }
+    // Errors / warnings
+    if (line.contains('❌') || line.contains('🚨') || line.contains('failed') || line.contains('Error:')) {
+      return const Color(0xFFEF4444);
+    }
+    if (line.contains('⚠️')) return const Color(0xFFF59E0B);
+    // Pipeline launch / execution events
+    if (line.contains('🚀') || line.contains('▶️') || line.contains('⚡')) {
+      return const Color(0xFF818CF8); // indigo-400
+    }
+    // File / directory info
+    if (line.contains('📂') || line.contains('📄') || line.contains('📁')) {
+      return const Color(0xFFF59E0B); // amber
+    }
+    // Timing / heartbeat
+    if (line.contains('⏱️') || line.contains('Elapsed') || line.contains('Finished in')) {
+      return const Color(0xFF6EE7B7); // teal
+    }
+    // Execution-order / metadata
+    if (line.contains('📋') || line.contains('📊') || line.contains('🔗')) {
+      return const Color(0xFF7DD3FC); // sky-300
+    }
+    // Input nodes
+    if (line.contains('📥') || line.contains('INPUT')) {
+      return const Color(0xFFA5B4FC); // indigo-300
+    }
+    // Section separators (empty lines or ---) stay dim
+    return const Color(0xFF94A3B8);
+  }
+
   Widget _buildPipelineLogs() {
     return Obx(() {
       // Auto-scroll when new logs arrive (fix #8)
@@ -508,17 +543,6 @@ class _ExecutionPanelState extends State<ExecutionPanel> {
         itemCount: execCtrl.log.length,
         itemBuilder: (context, index) {
           final log = execCtrl.log[index];
-
-          // Determine color based on log content
-          Color color = const Color(0xFF94A3B8);
-          if (log.contains('✅') || log.contains('🎉')) {
-            color = const Color(0xFF10B981);
-          } else if (log.contains('❌') || log.contains('⚠️')) {
-            color = const Color(0xFFEF4444);
-          } else if (log.contains('🚀') || log.contains('▶️')) {
-            color = const Color(0xFF3B82F6);
-          }
-
           return Padding(
             padding: const EdgeInsets.only(bottom: 4),
             child: Text(
@@ -526,7 +550,7 @@ class _ExecutionPanelState extends State<ExecutionPanel> {
               style: TextStyle(
                 fontFamily: 'monospace',
                 fontSize: 12,
-                color: color,
+                color: _logLineColor(log),
                 height: 1.4,
               ),
             ),

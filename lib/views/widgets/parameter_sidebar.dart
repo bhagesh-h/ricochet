@@ -20,10 +20,26 @@ class _ParameterSidebarState extends State<ParameterSidebar> {
   late PipelineController controller;
   double _width = 350.0;
 
+  // One TextEditingController per param key, so variable-chip insertion works.
+  final Map<String, TextEditingController> _textControllers = {};
+
+  TextEditingController _ctrlFor(String key, String? initial) {
+    return _textControllers.putIfAbsent(
+        key, () => TextEditingController(text: initial ?? ''));
+  }
+
   @override
   void initState() {
     super.initState();
     controller = Get.find<PipelineController>();
+  }
+
+  @override
+  void dispose() {
+    for (final c in _textControllers.values) {
+      c.dispose();
+    }
+    super.dispose();
   }
 
   @override
@@ -211,6 +227,9 @@ class _ParameterSidebarState extends State<ParameterSidebar> {
         if (param.key == 'tag' && widget.node.dockerImage != null) {
           return _buildTagPicker(param);
         }
+        if (param.key == 'command' || param.key == 'docker_command') {
+          return _buildCommandInput(param);
+        }
         return TextFormField(
           initialValue: param.value?.toString() ?? '',
           decoration: _inputDecoration(param.placeholder ?? 'Enter ${param.label.toLowerCase()}'),
@@ -280,6 +299,247 @@ class _ParameterSidebarState extends State<ParameterSidebar> {
     }
   }
 
+  // ── Smart Command Editor ────────────────────────────────────────────────────
+  Widget _buildCommandInput(BlockParameter param) {
+    final tCtrl = _ctrlFor(param.key, param.value?.toString());
+    final example = _exampleCommandFor(widget.node.dockerImage ?? '');
+
+    void insertVar(String variable) {
+      final sel = tCtrl.selection;
+      final text = tCtrl.text;
+      final start = sel.isValid && sel.start >= 0 ? sel.start : text.length;
+      final end = sel.isValid && sel.end >= 0 ? sel.end : text.length;
+      final newText = text.replaceRange(start, end, variable);
+      tCtrl.value = TextEditingValue(
+        text: newText,
+        selection: TextSelection.collapsed(offset: start + variable.length),
+      );
+      controller.updateNodeParameter(widget.node.id, param.key, newText);
+    }
+
+    return StatefulBuilder(
+      builder: (context, localSetState) {
+        final nowEmpty = tCtrl.text.trim().isEmpty;
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // ── Info banner (only when command is empty) ──────────────────
+            if (nowEmpty) ...[
+              Container(
+                padding: const EdgeInsets.all(12),
+                margin: const EdgeInsets.only(bottom: 10),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFEFF6FF),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: const Color(0xFF93C5FD)),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Row(
+                      children: [
+                        Icon(Icons.lightbulb_outline_rounded, size: 14, color: Color(0xFF3B82F6)),
+                        SizedBox(width: 6),
+                        Text(
+                          'How commands work',
+                          style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: Color(0xFF1D4ED8)),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 6),
+                    const Text(
+                      'Your upstream file is available as \$INPUT_FILE inside the container.\n'
+                      'Write all results to /outputs/ — Ricochet maps this to your workspace.',
+                      style: TextStyle(fontSize: 11.5, color: Color(0xFF1E40AF), height: 1.5),
+                    ),
+                    if (example.isNotEmpty) ...[
+                      const SizedBox(height: 10),
+                      GestureDetector(
+                        onTap: () {
+                          tCtrl.text = example;
+                          controller.updateNodeParameter(widget.node.id, param.key, example);
+                          localSetState(() {});
+                        },
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF1D4ED8),
+                            borderRadius: BorderRadius.circular(6),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              const Icon(Icons.play_circle_outline_rounded, color: Colors.white, size: 14),
+                              const SizedBox(width: 6),
+                              Flexible(
+                                child: Text(
+                                  example,
+                                  style: const TextStyle(
+                                    fontSize: 11,
+                                    color: Colors.white,
+                                    fontFamily: 'monospace',
+                                  ),
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            ],
+
+            // ── Multi-line monospace command field ────────────────────────
+            TextField(
+              controller: tCtrl,
+              minLines: 2,
+              maxLines: 6,
+              style: const TextStyle(
+                fontFamily: 'monospace',
+                fontSize: 13,
+                color: Color(0xFF0F172A),
+              ),
+              decoration: InputDecoration(
+                hintText: example.isNotEmpty
+                    ? example
+                    : r'e.g. mytool -i $INPUT_FILE -o /outputs/result.txt',
+                hintStyle: const TextStyle(
+                  color: Color(0xFFBDBDBD),
+                  fontSize: 12,
+                  fontFamily: 'monospace',
+                ),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(6),
+                  borderSide: const BorderSide(color: Color(0xFFD1D5DB)),
+                ),
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(6),
+                  borderSide: const BorderSide(color: Color(0xFFD1D5DB)),
+                ),
+                focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(6),
+                  borderSide: BorderSide(color: widget.node.primaryColor, width: 1.5),
+                ),
+                contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                filled: true,
+                fillColor: Colors.white,
+              ),
+              onChanged: (value) {
+                controller.updateNodeParameter(widget.node.id, param.key, value);
+                if (nowEmpty != value.trim().isEmpty) localSetState(() {});
+              },
+            ),
+            const SizedBox(height: 8),
+
+            // ── Clickable variable chips ───────────────────────────────────
+            Wrap(
+              spacing: 6,
+              runSpacing: 4,
+              children: [
+                _varChip(
+                  r'$INPUT_FILE',
+                  'Upstream file — the output of the connected node',
+                  Icons.input_rounded,
+                  const Color(0xFF8B5CF6),
+                  () => insertVar(r'$INPUT_FILE'),
+                ),
+                _varChip(
+                  '/outputs/',
+                  'Output directory — results are saved here',
+                  Icons.output_rounded,
+                  const Color(0xFF10B981),
+                  () => insertVar('/outputs/'),
+                ),
+                _varChip(
+                  '/inputs/',
+                  'Input files directory — all mounted input files',
+                  Icons.folder_open_rounded,
+                  const Color(0xFF3B82F6),
+                  () => insertVar('/inputs/'),
+                ),
+              ],
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  Widget _varChip(
+      String label, String tooltip, IconData icon, Color color, VoidCallback onTap) {
+    return Tooltip(
+      message: tooltip,
+      waitDuration: const Duration(milliseconds: 300),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(20),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+          decoration: BoxDecoration(
+            color: color.withOpacity(0.08),
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(color: color.withOpacity(0.35)),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(icon, size: 11, color: color),
+              const SizedBox(width: 4),
+              Text(
+                label,
+                style: TextStyle(
+                  fontSize: 11,
+                  color: color,
+                  fontFamily: 'monospace',
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// Returns a tool-specific example command string based on the Docker image name.
+  String _exampleCommandFor(String dockerImage) {
+    final img = dockerImage.toLowerCase();
+    if (img.contains('fastqc')) return r'fastqc $INPUT_FILE --outdir /outputs/';
+    if (img.contains('fastp')) return r'fastp -i $INPUT_FILE -o /outputs/out.fq.gz';
+    if (img.contains('bwa')) return r'bwa mem ref.fa $INPUT_FILE > /outputs/aligned.sam';
+    if (img.contains('samtools')) return r'samtools view -bS $INPUT_FILE -o /outputs/out.bam';
+    if (img.contains('trimmomatic')) {
+      return r'trimmomatic SE $INPUT_FILE /outputs/trimmed.fq SLIDINGWINDOW:4:20 MINLEN:36';
+    }
+    if (img.contains('multiqc')) return r'multiqc /inputs/ -o /outputs/';
+    if (img.contains('star')) {
+      return r'STAR --runThreadN 8 --readFilesIn $INPUT_FILE --outFileNamePrefix /outputs/';
+    }
+    if (img.contains('gatk')) {
+      return r'gatk HaplotypeCaller -I $INPUT_FILE -O /outputs/variants.vcf';
+    }
+    if (img.contains('kallisto')) {
+      return r'kallisto quant -i index.idx -o /outputs/ $INPUT_FILE';
+    }
+    if (img.contains('hisat')) {
+      return r'hisat2 -x genome -U $INPUT_FILE -S /outputs/aligned.sam';
+    }
+    if (img.contains('picard')) {
+      return r'picard MarkDuplicates I=$INPUT_FILE O=/outputs/dedup.bam M=/outputs/dup_metrics.txt';
+    }
+    if (img.contains('bowtie')) {
+      return r'bowtie2 -x genome -U $INPUT_FILE -S /outputs/aligned.sam';
+    }
+    if (img.contains('subread') || img.contains('featurecounts')) {
+      return r'featureCounts -a genes.gtf -o /outputs/counts.txt $INPUT_FILE';
+    }
+    return '';
+  }
+
+  // ── Tag Picker ──────────────────────────────────────────────────────────────
   Widget _buildTagPicker(BlockParameter param) {
     final searchCtrl = Get.find<DockerSearchController>();
     final currentValue = param.value?.toString() ?? 'latest';

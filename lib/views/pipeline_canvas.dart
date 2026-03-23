@@ -144,6 +144,18 @@ class _PipelineCanvasState extends State<PipelineCanvas>
                 },
               ),
 
+              // Empty-canvas welcome guide (pointer-transparent so DragTarget still works)
+              Obx(() {
+                if (controller.nodes.isNotEmpty) return const SizedBox.shrink();
+                return Positioned.fill(
+                  child: IgnorePointer(
+                    child: Center(
+                      child: _buildEmptyState(),
+                    ),
+                  ),
+                );
+              }),
+
               // Floating Fit View button
               Positioned(
                 right: 20,
@@ -189,6 +201,133 @@ class _PipelineCanvasState extends State<PipelineCanvas>
           ),
         ),
       ),
+    );
+  }
+
+  // ─── Empty-canvas welcome state ────────────────────────────────────────────
+  Widget _buildEmptyState() {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 36),
+      constraints: const BoxConstraints(maxWidth: 480),
+      decoration: BoxDecoration(
+        color: Colors.white.withOpacity(0.92),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: const Color(0xFFE2E8F0), width: 1.5),
+        boxShadow: const [
+          BoxShadow(color: Color(0x12000000), blurRadius: 24, offset: Offset(0, 8)),
+        ],
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          // Icon
+          Container(
+            width: 64,
+            height: 64,
+            decoration: BoxDecoration(
+              gradient: const LinearGradient(
+                colors: [Color(0xFF6366F1), Color(0xFF8B5CF6)],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              ),
+              borderRadius: BorderRadius.circular(16),
+            ),
+            child: const Icon(Icons.account_tree_rounded, color: Colors.white, size: 32),
+          ),
+          const SizedBox(height: 20),
+          const Text(
+            'Build Your Pipeline',
+            style: TextStyle(fontSize: 22, fontWeight: FontWeight.w800, color: Color(0xFF0F172A)),
+          ),
+          const SizedBox(height: 8),
+          const Text(
+            'Drag bioinformatics tools from the left sidebar onto the canvas, connect them in order, then hit Execute.',
+            style: TextStyle(fontSize: 13.5, color: Color(0xFF64748B), height: 1.6),
+            textAlign: TextAlign.center,
+          ),
+          const SizedBox(height: 28),
+          // Steps
+          _emptyStateStep(
+            '1',
+            'Drag a tool',
+            'From the sidebar on the left — try FastQC or BWA',
+            const Color(0xFF6366F1),
+            Icons.widgets_rounded,
+          ),
+          const SizedBox(height: 12),
+          _emptyStateStep(
+            '2',
+            'Connect nodes',
+            'Drag the circle port on a node to wire it to the next step',
+            const Color(0xFF8B5CF6),
+            Icons.cable_rounded,
+          ),
+          const SizedBox(height: 12),
+          _emptyStateStep(
+            '3',
+            'Set commands & Execute',
+            "Use \$INPUT_FILE and /outputs/ in each tool's command field",
+            const Color(0xFF10B981),
+            Icons.play_circle_filled_rounded,
+          ),
+          const SizedBox(height: 24),
+          // Keyboard hint
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+            decoration: BoxDecoration(
+              color: const Color(0xFFF8FAFC),
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: const Color(0xFFE2E8F0)),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(Icons.keyboard_rounded, size: 14, color: Color(0xFF94A3B8)),
+                const SizedBox(width: 8),
+                const Flexible(
+                  child: Text(
+                    'Ctrl+Z undo  ·  Del remove  ·  Scroll to zoom',
+                    style: TextStyle(fontSize: 11, color: Color(0xFF94A3B8), fontFamily: 'monospace'),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _emptyStateStep(String number, String title, String subtitle, Color color, IconData icon) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Container(
+          width: 28,
+          height: 28,
+          decoration: BoxDecoration(
+            color: color.withOpacity(0.12),
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: Center(
+            child: Text(
+              number,
+              style: TextStyle(fontSize: 13, fontWeight: FontWeight.w800, color: color),
+            ),
+          ),
+        ),
+        const SizedBox(width: 14),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(title, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: Color(0xFF1E293B))),
+              const SizedBox(height: 2),
+              Text(subtitle, style: const TextStyle(fontSize: 12, color: Color(0xFF64748B), height: 1.4)),
+            ],
+          ),
+        ),
+      ],
     );
   }
 

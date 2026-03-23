@@ -65,7 +65,10 @@ class _ConnectionDotState extends State<ConnectionDot>
       child: AnimatedBuilder(
         animation: _pulseAnimation,
         builder: (context, child) {
-          return Transform.scale(
+          return Tooltip(
+            message: widget.isOutput ? 'Drag to connect to next node' : 'Drop connection here',
+            waitDuration: const Duration(milliseconds: 600),
+            child: Transform.scale(
             scale: _isHovering ? _pulseAnimation.value : 1.0,
             child: Draggable<ConnectionData>(
               data: ConnectionData(
@@ -121,10 +124,11 @@ class _ConnectionDotState extends State<ConnectionDot>
                 widget.onDragEnd?.call();
               },
             ),
-          );
-        },
-      ),
-    );
+          ),
+        );
+      },
+    ),
+  );
   }
 
   Widget _buildDot({bool isDragging = false, bool isHighlighted = false}) {

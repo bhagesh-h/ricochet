@@ -30,7 +30,6 @@ class _PipelineBlockWidgetState extends State<PipelineBlockWidget>
     with SingleTickerProviderStateMixin {
   late AnimationController _hoverController;
   late Animation<double> _scaleAnimation;
-  late Animation<double> _shadowAnimation;
   bool _isHovering = false;
 
   @override
@@ -41,9 +40,6 @@ class _PipelineBlockWidgetState extends State<PipelineBlockWidget>
       vsync: this,
     );
     _scaleAnimation = Tween<double>(begin: 1.0, end: 1.02).animate(
-      CurvedAnimation(parent: _hoverController, curve: Curves.easeInOut),
-    );
-    _shadowAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
       CurvedAnimation(parent: _hoverController, curve: Curves.easeInOut),
     );
   }
@@ -93,6 +89,8 @@ class _PipelineBlockWidgetState extends State<PipelineBlockWidget>
                           _buildMainBlock(isSelected),
                           // Connection dots
                           _buildConnectionDots(),
+                          // "Needs command" warning badge
+                          _buildNeedsCommandBadge(),
                         ],
                       ),
                     ),
@@ -506,6 +504,54 @@ class _PipelineBlockWidgetState extends State<PipelineBlockWidget>
         }
         return widget.node.executionStatus ?? 'Execution failed';
     }
+  }
+
+  Widget _buildNeedsCommandBadge() {
+    return GetBuilder<PipelineController>(
+      id: widget.node.id,
+      builder: (_) {
+        final hasCommand = widget.node.dockerImage == null ||
+            widget.node.parameters.any((p) =>
+                (p.key == 'command' || p.key == 'docker_command') &&
+                (p.value?.toString().trim() ?? '').isNotEmpty);
+        if (hasCommand) return const SizedBox.shrink();
+        return Positioned(
+          top: -7,
+          right: -7,
+          child: Tooltip(
+            message: 'No command set — click node to configure',
+            waitDuration: const Duration(milliseconds: 400),
+            child: Container(
+              width: 18,
+              height: 18,
+              decoration: BoxDecoration(
+                color: const Color(0xFFF59E0B),
+                shape: BoxShape.circle,
+                border: Border.all(color: Colors.white, width: 2),
+                boxShadow: [
+                  BoxShadow(
+                    color: const Color(0xFFF59E0B).withOpacity(0.4),
+                    blurRadius: 4,
+                    offset: const Offset(0, 1),
+                  ),
+                ],
+              ),
+              child: const Center(
+                child: Text(
+                  '!',
+                  style: TextStyle(
+                    fontSize: 10,
+                    fontWeight: FontWeight.w900,
+                    color: Colors.white,
+                    height: 1,
+                  ),
+                ),
+              ),
+            ),
+          ),
+        );
+      },
+    );
   }
 
   Widget _buildStatusIndicator() {
