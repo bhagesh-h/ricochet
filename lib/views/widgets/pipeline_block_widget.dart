@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
+import 'package:path/path.dart' as p;
 import '../../controllers/pipeline_controller.dart';
 import '../../models/pipeline_node.dart';
 import 'connection_dot.dart';
@@ -289,14 +290,27 @@ class _PipelineBlockWidgetState extends State<PipelineBlockWidget>
                   ),
                   const SizedBox(height: 2),
                   Expanded(
-                    child: Text(
-                      widget.node.description,
-                      style: const TextStyle(
-                        fontSize: 11,
-                        color: Color(0xFF64748B),
-                      ),
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
+                    child: GetBuilder<PipelineController>(
+                      id: widget.node.id,
+                      builder: (_) {
+                        final subtitle = _nodeSubtitle();
+                        return Text(
+                          subtitle,
+                          style: TextStyle(
+                            fontSize: 11,
+                            color: widget.node.category == BlockCategory.input &&
+                                    subtitle != widget.node.description
+                                ? widget.node.primaryColor.withOpacity(0.8)
+                                : const Color(0xFF64748B),
+                            fontWeight: widget.node.category == BlockCategory.input &&
+                                    subtitle != widget.node.description
+                                ? FontWeight.w500
+                                : FontWeight.normal,
+                          ),
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                        );
+                      },
                     ),
                   ),
                 ],
@@ -479,6 +493,38 @@ class _PipelineBlockWidgetState extends State<PipelineBlockWidget>
         ],
       ),
     );
+  }
+
+  /// Returns the subtitle shown in the node card.
+  /// For Input nodes: shows attached filenames or a pretty count.
+  /// For all other nodes: falls back to the static description.
+  String _nodeSubtitle() {
+    if (widget.node.category != BlockCategory.input) {
+      return widget.node.description;
+    }
+    // Look for a multiFile parameter (new architecture)
+    final multiParam = widget.node.parameters
+        .firstWhereOrNull((p) => p.type == ParameterType.multiFile);
+    if (multiParam != null && multiParam.value is List) {
+      final files = (multiParam.value as List)
+          .map((e) => e.toString().trim())
+          .where((s) => s.isNotEmpty)
+          .toList();
+      if (files.isNotEmpty) {
+        if (files.length == 1) {
+          return p.basename(files[0]);
+        }
+        // Multiple files: show first name + count
+        return '${p.basename(files[0])} +${files.length - 1} more';
+      }
+    }
+    // Legacy single-file path
+    final fileParam = widget.node.parameters
+        .firstWhereOrNull((param) => param.key == 'file_path');
+    final fp = fileParam?.value?.toString().trim() ?? '';
+    if (fp.isNotEmpty) return p.basename(fp);
+
+    return widget.node.description;
   }
 
   String _statusTooltipMessage() {

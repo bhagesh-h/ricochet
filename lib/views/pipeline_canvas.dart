@@ -23,6 +23,7 @@ class _PipelineCanvasState extends State<PipelineCanvas>
       TransformationController();
   late AnimationController _fitAnimationController;
   Animation<Matrix4>? _fitAnimation;
+  Worker? _fitWorker; // listens for loadTemplate() signals
 
   double _currentZoom = 1.0;
   static const double _minZoom = 0.1;
@@ -47,6 +48,16 @@ class _PipelineCanvasState extends State<PipelineCanvas>
     _fitAnimationController.addListener(_onFitAnimationTick);
     _transformationController.addListener(_onTransformationChanged);
 
+    // Auto-fit whenever PipelineController.loadTemplate() fires.
+    // Using ever() + postFrameCallback guarantees the nodes are already
+    // painted before we compute the bounding box.
+    final pipelineCtrl = Get.find<PipelineController>();
+    _fitWorker = ever(pipelineCtrl.fitViewRequest, (_) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _fitToNodes();
+      });
+    });
+
     // Center the view initially
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _centerView();
@@ -56,6 +67,7 @@ class _PipelineCanvasState extends State<PipelineCanvas>
 
   @override
   void dispose() {
+    _fitWorker?.dispose();
     _fitAnimationController.dispose();
     _transformationController.removeListener(_onTransformationChanged);
     _transformationController.dispose();

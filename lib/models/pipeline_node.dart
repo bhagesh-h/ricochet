@@ -86,7 +86,7 @@ class BlockParameter {
   Map<String, dynamic> toJson() => _$BlockParameterToJson(this);
 }
 
-enum ParameterType { text, dropdown, toggle, file, numeric }
+enum ParameterType { text, dropdown, toggle, file, numeric, multiFile }
 
 @JsonSerializable(explicitToJson: true)
 
@@ -238,9 +238,24 @@ class Connection {
 // Extension for legacy compatibility
 extension PipelineNodeConfig on PipelineNode {
   Map<String, dynamic> get config {
-    Map<String, dynamic> configMap = {};
+    final Map<String, dynamic> configMap = {};
     for (var param in parameters) {
-      if (param.value != null) {
+      if (param.type == ParameterType.multiFile) {
+        if (param.value is List) {
+          final files = (param.value as List)
+              .map((e) => e.toString())
+              .where((s) => s.isNotEmpty)
+              .toList();
+          if (files.length == 1) {
+            configMap['${param.key}_1'] = files[0];
+            configMap[param.key] = files[0]; // backward compat
+          } else {
+            for (int i = 0; i < files.length; i++) {
+              configMap['${param.key}_${i + 1}'] = files[i];
+            }
+          }
+        }
+      } else if (param.value != null) {
         configMap[param.key] = param.value;
       }
     }

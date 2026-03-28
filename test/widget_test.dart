@@ -7,6 +7,7 @@ import 'package:get/get.dart';
 import 'package:Ricochet/controllers/docker_controller.dart';
 import 'package:Ricochet/controllers/docker_search_controller.dart';
 import 'package:Ricochet/controllers/execution_controller.dart';
+import 'package:Ricochet/controllers/home_controller.dart';
 import 'package:Ricochet/controllers/pipeline_controller.dart';
 import 'package:Ricochet/controllers/pipeline_tabs_controller.dart';
 import 'package:Ricochet/main.dart';
@@ -14,6 +15,7 @@ import 'package:Ricochet/main.dart';
 void main() {
   setUp(() {
     // Register all controllers the same way main() does.
+    Get.put(HomeController());
     Get.put(PipelineController());
     Get.put(ExecutionController());
     Get.put(DockerSearchController());

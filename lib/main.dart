@@ -6,6 +6,8 @@ import 'controllers/pipeline_controller.dart';
 import 'controllers/execution_controller.dart';
 import 'controllers/docker_controller.dart';
 import 'controllers/pipeline_tabs_controller.dart';
+import 'controllers/home_controller.dart';
+import 'views/home_screen.dart';
 import 'views/pipeline_canvas.dart';
 import 'views/tool_sidebar.dart';
 import 'views/widgets/execution_panel.dart';
@@ -21,6 +23,8 @@ void main() {
   Get.put(DockerController());
   // PipelineTabsController must come AFTER PipelineController & ExecutionController
   Get.put(PipelineTabsController());
+  // HomeController manages home ↔ editor navigation
+  Get.put(HomeController());
 
   runApp(const MyApp());
 }
@@ -30,9 +34,6 @@ class MyApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final ExecutionController execCtrl = Get.find();
-    final DockerController dockerCtrl = Get.find();
-
     return GetMaterialApp(
       title: 'Pipeline Designer',
       theme: ThemeData(
@@ -43,7 +44,32 @@ class MyApp extends StatelessWidget {
           brightness: Brightness.light,
         ),
       ),
-      home: Scaffold(
+      // ── Root: animate between Home screen and the Editor ──────────────────
+      home: Obx(() {
+        final homeCtrl = Get.find<HomeController>();
+        return AnimatedSwitcher(
+          duration: const Duration(milliseconds: 220),
+          child: homeCtrl.appView.value == AppView.home
+              ? const HomeScreen(key: ValueKey('home'))
+              : const _EditorScaffold(key: ValueKey('editor')),
+        );
+      }),
+      debugShowCheckedModeBanner: false,
+    );
+  }
+}
+
+// ─── Editor (full pipeline workspace) ────────────────────────────────────────
+
+class _EditorScaffold extends StatelessWidget {
+  const _EditorScaffold({Key? key}) : super(key: key);
+
+  @override
+  Widget build(BuildContext context) {
+    final ExecutionController execCtrl = Get.find();
+    final DockerController dockerCtrl = Get.find();
+
+    return Scaffold(
         backgroundColor: const Color(0xFFF7F8FA),
         appBar: AppBar(
           elevation: 0,
@@ -51,15 +77,23 @@ class MyApp extends StatelessWidget {
           surfaceTintColor: Colors.transparent,
           title: Row(
             children: [
-              Container(
-                padding: const EdgeInsets.all(8),
-                decoration: BoxDecoration(
-                  gradient: const LinearGradient(
-                    colors: [Color(0xFF6366F1), Color(0xFF8B5CF6)],
+              // ── Clicking the logo returns to Home ────────────────────────
+              GestureDetector(
+                onTap: () => Get.find<HomeController>().goHome(),
+                child: Tooltip(
+                  message: 'Back to Home',
+                  child: Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      gradient: const LinearGradient(
+                        colors: [Color(0xFF6366F1), Color(0xFF8B5CF6)],
+                      ),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Image.asset('assets/logo-nobg.png',
+                        width: 20, height: 20, color: Colors.white),
                   ),
-                  borderRadius: BorderRadius.circular(8),
                 ),
-                child: Image.asset('assets/logo-nobg.png', width: 20, height: 20, color: Colors.white),
               ),
               const SizedBox(width: 12),
               const Text(
@@ -219,7 +253,8 @@ class MyApp extends StatelessWidget {
                     boxShadow: isDockerReady
                         ? [
                             BoxShadow(
-                              color: const Color(0xFF10B981).withOpacity(0.25),
+                              color:
+                                  const Color(0xFF10B981).withOpacity(0.25),
                               blurRadius: 8,
                               offset: const Offset(0, 3),
                             ),
@@ -240,7 +275,8 @@ class MyApp extends StatelessWidget {
                         horizontal: 20,
                         vertical: 12,
                       ),
-                      textStyle: const TextStyle(fontWeight: FontWeight.w600),
+                      textStyle:
+                          const TextStyle(fontWeight: FontWeight.w600),
                     ),
                   ),
                 ),
@@ -272,9 +308,9 @@ class MyApp extends StatelessWidget {
                 // Main content
                 Expanded(
                   child: Row(
-                    children: [
-                      const ToolSidebar(),
-                      Expanded(child: const PipelineCanvas()),
+                    children: const [
+                      ToolSidebar(),
+                      Expanded(child: PipelineCanvas()),
                     ],
                   ),
                 ),
@@ -291,8 +327,7 @@ class MyApp extends StatelessWidget {
                 right: 0,
                 bottom: execCtrl.showPanel.value
                     ? 28
-                    : -(execCtrl.panelHeight.value +
-                          28), // 28 is status bar height
+                    : -(execCtrl.panelHeight.value + 28),
                 height: execCtrl.panelHeight.value,
                 child: const ExecutionPanel(),
               );
@@ -307,8 +342,9 @@ class MyApp extends StatelessWidget {
               child: Container(
                 padding: const EdgeInsets.symmetric(horizontal: 12),
                 decoration: const BoxDecoration(
-                  color: Color(0xFF6366F1), // Primary color
-                  border: Border(top: BorderSide(color: Color(0xFF4F46E5))),
+                  color: Color(0xFF6366F1),
+                  border:
+                      Border(top: BorderSide(color: Color(0xFF4F46E5))),
                 ),
                 child: Row(
                   children: [
@@ -366,39 +402,35 @@ class MyApp extends StatelessWidget {
                               child: CircularProgressIndicator(
                                 strokeWidth: 2,
                                 valueColor: AlwaysStoppedAnimation(
-                                  Colors.white,
-                                ),
+                                    Colors.white),
                               ),
                             ),
                             SizedBox(width: 8),
                             Text(
                               'Running Pipeline...',
                               style: TextStyle(
-                                color: Colors.white,
-                                fontSize: 11,
-                              ),
+                                  color: Colors.white, fontSize: 11),
                             ),
                           ],
                         );
                       }
                       return const Text(
                         'Ready',
-                        style: TextStyle(color: Colors.white70, fontSize: 11),
+                        style:
+                            TextStyle(color: Colors.white70, fontSize: 11),
                       );
                     }),
                     const Spacer(),
                     const Text(
                       'Ricochet v1.0.0',
-                      style: TextStyle(color: Colors.white54, fontSize: 11),
+                      style:
+                          TextStyle(color: Colors.white54, fontSize: 11),
                     ),
                   ],
                 ),
               ),
             ),
           ],
-        ),
-      ),
-      debugShowCheckedModeBanner: false,
-    );
+        ));
   }
 }

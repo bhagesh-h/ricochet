@@ -263,24 +263,24 @@ class ExecutionController extends GetxController {
       // Prepare input files from upstream nodes
       final inputFiles = <String, String>{};
       final upstreamConnections =
-          pipelineCtrl.connections.where((c) => c.toNodeId == node.id);
+          pipelineCtrl.connections.where((c) => c.toNodeId == node.id).toList();
 
-      for (var connection in upstreamConnections) {
+      for (int connIdx = 0; connIdx < upstreamConnections.length; connIdx++) {
+        final connection = upstreamConnections[connIdx];
         final upstreamNodeId = connection.fromNodeId;
         if (nodeOutputs.containsKey(upstreamNodeId)) {
-          // Use the port name as the key, or default to 'input'
-          final key = connection.toPort.isNotEmpty
-              ? connection.toPort
-              : 'input_${upstreamNodeId.substring(0, 4)}';
+          // Always include the upstreamNodeId so two Input nodes that both
+          // connect to the same port don't collide and overwrite each other.
+          final key = 'file_${connIdx + 1}_${upstreamNodeId.substring(0, 6)}';
           final filePath = nodeOutputs[upstreamNodeId]!;
           inputFiles[key] = filePath;
           final upstreamTitle = pipelineCtrl.nodes
               .firstWhere((n) => n.id == upstreamNodeId)
               .title;
-          _addLog(tabId, '   📥 Input from "$upstreamTitle"');
+          _addLog(tabId, '   📥 Input ${connIdx + 1} from "$upstreamTitle"');
           _addLog(tabId, '      Host path : $filePath');
           final fileName = filePath.split(Platform.pathSeparator).last;
-          _addLog(tabId, '      In-container: /inputs/$fileName  (\$INPUT_FILE)');
+          _addLog(tabId, '      In-container: /inputs/$fileName  (\$INPUT_FILE_${connIdx + 1})');
         }
       }
 

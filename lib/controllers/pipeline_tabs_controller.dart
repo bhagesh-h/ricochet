@@ -6,6 +6,7 @@ import 'package:get/get.dart';
 import 'package:path/path.dart' as p;
 import 'package:uuid/uuid.dart';
 import '../models/pipeline_file.dart';
+import '../models/pipeline_template.dart';
 import '../services/workspace_service.dart';
 import 'pipeline_controller.dart';
 import 'execution_controller.dart';
@@ -271,5 +272,56 @@ class PipelineTabsController extends GetxController {
         ],
       ),
     );
+  }
+
+  // ── Template ────────────────────────────────────────────────────────────────
+
+  /// Create a new tab pre-populated with [template]'s nodes and connections.
+  ///
+  /// We deliberately DO NOT call [switchTab] here because [switchTab] schedules
+  /// `_loadTabFromDisk(tab).then(loadPipelineData)` asynchronously.  Since the
+  /// new tab has no pipeline.json yet, that `.then` callback would fire on the
+  /// next event-loop tick with an empty node list — wiping whatever
+  /// [loadTemplate] already drew on the canvas (the classic Future race).
+  ///
+  /// Instead we replicate only the parts of [switchTab] that are safe:
+  ///  1. Save & cancel auto-save for the previous tab.
+  ///  2. Set activeTabId directly (no disk-load scheduled).
+  ///  3. Call loadTemplate to populate the canvas synchronously.
+  ///  4. Immediately flush to disk so the tab has a pipeline.json from birth.
+  Future<void> openFromTemplate(PipelineTemplate template) async {
+    final id = const Uuid().v4();
+    final folderPath =
+        await _workspaceService.createPipelineFolder(template.name);
+    final newTab = PipelineFile(
+      id: id,
+      name: p.basename(folderPath),
+      folderPath: folderPath,
+    );
+    tabs.add(newTab);
+
+    // ── Save previous tab before leaving it ──────────────────────────────────
+    final prevTab = currentPipeline;
+    if (prevTab != null) {
+      Get.find<PipelineController>().saveStateToPipelineFile(prevTab);
+      _autoSaveTimer?.cancel();
+      // Fire-and-forget — we don't await so we don't block the UI.
+      _saveActiveTabToDisk();
+    }
+
+    // ── Activate the new tab WITHOUT scheduling a disk-load ──────────────────
+    activeTabId.value = id;
+
+    // ── Populate the canvas synchronously from the template ──────────────────
+    final pipelineCtrl = Get.find<PipelineController>();
+    pipelineCtrl.loadTemplate(template, tabId: id);
+
+    // ── Persist to disk immediately so it survives tab-switches / restarts ───
+    pipelineCtrl.saveStateToPipelineFile(newTab);
+    final jsonData = jsonEncode(newTab.toJson());
+    final filePath = p.join(newTab.folderPath, 'pipeline.json');
+    await File(filePath).writeAsString(jsonData);
+    newTab.hasUnsavedChanges = false;
+    tabs.refresh();
   }
 }

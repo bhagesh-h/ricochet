@@ -37,6 +37,7 @@ const _$ParameterTypeEnumMap = {
   ParameterType.toggle: 'toggle',
   ParameterType.file: 'file',
   ParameterType.numeric: 'numeric',
+  ParameterType.multiFile: 'multiFile',
 };
 
 PipelineNode _$PipelineNodeFromJson(Map<String, dynamic> json) => PipelineNode(

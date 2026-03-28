@@ -1,4 +1,5 @@
 import 'package:archive/archive.dart';
+import 'package:path/path.dart' as p;
 import '../models/pipeline_node.dart';
 import 'docker_service.dart';
 
@@ -117,18 +118,40 @@ class DockerComposeExportService {
       }
 
       // Environment Variables (Data Flow)
+      // Flatten all incoming files from all upstream connections into ordered
+      // slots. Input nodes contribute their multiFile list; processing/analysis
+      // nodes contribute their single output file.
       final envVars = <String>[];
-      if (deps.length == 1) {
-        final upstreamNode = sortedNodes.firstWhere((n) => n.id == deps.first.fromNodeId);
-        final ext = upstreamNode.outputFileName ?? '\${${_slugify(upstreamNode.title).toUpperCase()}_EXT:-txt}';
-        final outName = upstreamNode.outputFileName ?? '${nodeSlugMap[upstreamNode.id]}_output.$ext';
-        envVars.add('INPUT_FILE=/output/$outName');
-      } else if (deps.length > 1) {
-        for (int i = 0; i < deps.length; i++) {
-          final upstreamNode = sortedNodes.firstWhere((n) => n.id == deps[i].fromNodeId);
-          final outName = upstreamNode.outputFileName ?? '${nodeSlugMap[upstreamNode.id]}_output.\${${_slugify(upstreamNode.title).toUpperCase()}_EXT:-txt}';
-          envVars.add('INPUT_FILE_${i + 1}=/output/$outName');
+      final List<String> allSlotPaths = [];
+      for (final dep in deps) {
+        final upstream = sortedNodes.firstWhere((n) => n.id == dep.fromNodeId);
+        final multiParam = upstream.parameters
+            .where((p) => p.type == ParameterType.multiFile)
+            .firstOrNull;
+        if (multiParam != null && multiParam.value is List) {
+          final files = (multiParam.value as List)
+              .map((e) => e.toString())
+              .where((s) => s.isNotEmpty)
+              .toList();
+          for (final f in files) {
+            allSlotPaths.add('/input/${p.basename(f)}');
+          }
+        } else {
+          final ext = upstream.outputFileName ??
+              '\${${_slugify(upstream.title).toUpperCase()}_EXT:-txt}';
+          final outName = upstream.outputFileName ??
+              '${nodeSlugMap[upstream.id]}_output.$ext';
+          allSlotPaths.add('/output/$outName');
         }
+      }
+      // Emit INPUT_FILE (single) or INPUT_FILE_1 / _2 / … (multiple)
+      if (allSlotPaths.length == 1) {
+        envVars.add('INPUT_FILE=${allSlotPaths[0]}');
+      } else if (allSlotPaths.length > 1) {
+        for (int i = 0; i < allSlotPaths.length; i++) {
+          envVars.add('INPUT_FILE_${i + 1}=${allSlotPaths[i]}');
+        }
+        envVars.add('INPUT_FILE=${allSlotPaths[0]}'); // backward-compat alias
       }
 
       // Output File Name exposed to env
@@ -138,7 +161,10 @@ class DockerComposeExportService {
 
       // Custom parameters passed as ENV
       for (var param in node.parameters) {
-        if (param.key != 'command' && param.key != 'docker_command' && param.value != null) {
+        if (param.key == 'command' || param.key == 'docker_command') continue;
+        if (param.type == ParameterType.multiFile) {
+          continue; // handled above in data-flow section
+        } else if (param.value != null) {
           final envKey = param.key.toUpperCase();
           envVars.add('$envKey=\${$envKey:-${param.value}}');
         }
@@ -190,7 +216,22 @@ class DockerComposeExportService {
     for (var node in sortedNodes) {
       buffer.writeln('# --- ${node.title} Settings ---');
       for (var param in node.parameters) {
-        if (param.key != 'command' && param.key != 'docker_command' && param.value != null) {
+        if (param.key == 'command' || param.key == 'docker_command') continue;
+        if (param.type == ParameterType.multiFile) {
+          if (param.value is List) {
+            final files = (param.value as List)
+                .map((e) => e.toString())
+                .where((s) => s.isNotEmpty)
+                .toList();
+            if (files.length == 1) {
+              buffer.writeln('INPUT_FILE=${files[0]}');
+            } else {
+              for (int i = 0; i < files.length; i++) {
+                buffer.writeln('INPUT_FILE_${i + 1}=${files[i]}');
+              }
+            }
+          }
+        } else if (param.value != null) {
           final envKey = param.key.toUpperCase();
           buffer.writeln('$envKey=${param.value}');
         }

@@ -5,6 +5,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../controllers/docker_search_controller.dart';
 import '../models/pipeline_node.dart';
 import '../models/pipeline_file.dart';
+import '../models/pipeline_template.dart';
 import '../models/docker_pull_progress.dart';
 import '../services/docker_service.dart';
 import '../services/workspace_service.dart';
@@ -27,6 +28,12 @@ class PipelineController extends GetxController {
   var selectedNode = Rxn<String>();
   var selectedConnectionId = Rxn<String>();
   var cycleConnectionIds = <String>[].obs;
+
+  /// Incremented each time [loadTemplate] finishes populating the canvas.
+  /// The canvas widget listens to this and calls _fitToNodes() so the user
+  /// always sees the full template immediately — regardless of where the
+  /// template coordinates happen to be in the virtual canvas.
+  final fitViewRequest = 0.obs;
 
   void deselectAll() {
     selectNode(null);
@@ -249,11 +256,10 @@ class PipelineController extends GetxController {
           iconCodePoint: '0xe2c7',
           parameters: [
             BlockParameter(
-              key: 'file_path',
-              label: 'Select File',
-              type: ParameterType.file,
-              placeholder: 'Choose file from your computer',
-              required: true,
+              key: 'files',
+              label: 'Input Files',
+              type: ParameterType.multiFile,
+              value: <String>[],
             ),
           ],
           outputPorts: ['data'],
@@ -315,6 +321,13 @@ class PipelineController extends GetxController {
               options: ['fastqc', 'casava', 'nanooomore'],
               value: 'fastqc',
             ),
+            BlockParameter(
+              key: 'command',
+              label: 'Command',
+              type: ParameterType.text,
+              value: r'fastqc $INPUT_FILE --outdir /outputs/',
+              placeholder: 'Command to run inside container',
+            ),
           ],
         );
 
@@ -333,6 +346,12 @@ class PipelineController extends GetxController {
               label: 'Image Tag',
               type: ParameterType.text,
               value: 'latest',
+            ),
+            BlockParameter(
+              key: 'threads',
+              label: 'Threads',
+              type: ParameterType.numeric,
+              value: 4,
             ),
             BlockParameter(
               key: 'leading_quality',
@@ -357,6 +376,15 @@ class PipelineController extends GetxController {
               label: 'Minimum Length',
               type: ParameterType.numeric,
               value: 36,
+            ),
+            BlockParameter(
+              key: 'command',
+              label: 'Command',
+              type: ParameterType.text,
+              value: r'trimmomatic PE $INPUT_FILE_1 $INPUT_FILE_2 '
+                  r'/outputs/trimmed_1.fq.gz /outputs/trimmed_2.fq.gz '
+                  r'LEADING:3 TRAILING:3 SLIDINGWINDOW:4:15 MINLEN:36',
+              placeholder: 'Command to run inside container',
             ),
           ],
         );
@@ -390,6 +418,13 @@ class PipelineController extends GetxController {
               type: ParameterType.numeric,
               value: 8,
             ),
+            BlockParameter(
+              key: 'command',
+              label: 'Command',
+              type: ParameterType.text,
+              value: r'bwa mem /ref/genome.fa $INPUT_FILE_1 $INPUT_FILE_2 -o /outputs/aligned.sam',
+              placeholder: 'Command to run inside container',
+            ),
           ],
         );
 
@@ -421,6 +456,14 @@ class PipelineController extends GetxController {
               type: ParameterType.dropdown,
               options: ['alignReads', 'genomeGenerate'],
               value: 'alignReads',
+            ),
+            BlockParameter(
+              key: 'command',
+              label: 'Command',
+              type: ParameterType.text,
+              value: r'STAR --runMode alignReads --genomeDir /ref '
+                  r'--readFilesIn $INPUT_FILE_1 $INPUT_FILE_2 --outFileNamePrefix /outputs/',
+              placeholder: 'Command to run inside container',
             ),
           ],
         );
@@ -561,18 +604,19 @@ class PipelineController extends GetxController {
       return 'fastqc \$INPUT_FILE --outdir /outputs/';
     }
     if (lower.contains('trimmomatic')) {
-      return 'trimmomatic SE \$INPUT_FILE /outputs/trimmed.fastq.gz '
-          'LEADING:3 TRAILING:3 SLIDINGWINDOW:4:15 MINLEN:36';
+      return r'trimmomatic PE $INPUT_FILE_1 $INPUT_FILE_2 '
+          r'/outputs/trimmed_1.fq.gz /outputs/trimmed_2.fq.gz '
+          r'LEADING:3 TRAILING:3 SLIDINGWINDOW:4:15 MINLEN:36';
     }
     if (lower.contains('bwa')) {
-      return 'bwa mem /ref/genome.fa \$INPUT_FILE -o /outputs/aligned.sam';
+      return r'bwa mem /ref/genome.fa $INPUT_FILE_1 $INPUT_FILE_2 -o /outputs/aligned.sam';
     }
     if (lower.contains('samtools')) {
       return 'samtools view -bS \$INPUT_FILE -o /outputs/output.bam';
     }
     if (lower.contains('star')) {
-      return 'STAR --runMode alignReads --genomeDir /ref '
-          '--readFilesIn \$INPUT_FILE --outFileNamePrefix /outputs/';
+      return r'STAR --runMode alignReads --genomeDir /ref '
+          r'--readFilesIn $INPUT_FILE_1 $INPUT_FILE_2 --outFileNamePrefix /outputs/';
     }
     if (lower.contains('gatk')) {
       return 'gatk HaplotypeCaller -I \$INPUT_FILE -O /outputs/variants.vcf';
@@ -581,10 +625,10 @@ class PipelineController extends GetxController {
       return 'multiqc /inputs/ -o /outputs/';
     }
     if (lower.contains('hisat')) {
-      return 'hisat2 -x /ref/index -U \$INPUT_FILE -S /outputs/aligned.sam';
+      return r'hisat2 -x /ref/index -1 $INPUT_FILE_1 -2 $INPUT_FILE_2 -S /outputs/aligned.sam';
     }
     if (lower.contains('bowtie')) {
-      return 'bowtie2 -x /ref/index -U \$INPUT_FILE -S /outputs/aligned.sam';
+      return r'bowtie2 -x /ref/index -1 $INPUT_FILE_1 -2 $INPUT_FILE_2 -S /outputs/aligned.sam';
     }
     if (lower.contains('kallisto')) {
       return 'kallisto quant -i /ref/index.idx -o /outputs/ \$INPUT_FILE';
@@ -715,11 +759,27 @@ class PipelineController extends GetxController {
       node.logs.clear();
       update([nodeId]);
 
-      final fileParam =
-          node.parameters.firstWhereOrNull((p) => p.key == 'file_path');
-      final filePath = fileParam?.value?.toString().trim() ?? '';
+      // Collect selected files.  New nodes use 'files' (ParameterType.multiFile,
+      // List<String>); old saved files may still use legacy 'file_path' (String).
+      final List<String> selectedFiles;
+      {
+        final multiParam = node.parameters
+            .firstWhereOrNull((p) => p.type == ParameterType.multiFile);
+        if (multiParam != null && multiParam.value is List) {
+          selectedFiles = (multiParam.value as List)
+              .map((e) => e.toString().trim())
+              .where((s) => s.isNotEmpty)
+              .toList();
+        } else {
+          // Legacy fallback: single file_path string param
+          final fileParam =
+              node.parameters.firstWhereOrNull((p) => p.key == 'file_path');
+          final fp = fileParam?.value?.toString().trim() ?? '';
+          selectedFiles = fp.isNotEmpty ? [fp] : [];
+        }
+      }
 
-      if (filePath.isEmpty) {
+      if (selectedFiles.isEmpty) {
         node.logs.add(
             '[ERROR] No file selected. Open the Input node parameters and choose a file.');
         node.executionStatus = 'Input node is not configured: no file selected.';
@@ -729,60 +789,73 @@ class PipelineController extends GetxController {
         return;
       }
 
-      final inputFile = File(filePath);
-      if (!await inputFile.exists()) {
-        node.logs.add('[ERROR] File not found: $filePath');
-        node.logs
-            .add('[ERROR] Make sure the path is correct and the file exists.');
-        node.executionStatus = 'Input file was not found on disk.';
-        node.failureScope = NodeFailureScope.configuration;
-        setNodeStatus(nodeId, BlockStatus.failed);
-        update([nodeId]);
-        return;
+      // Validate every selected file exists on disk.
+      for (final filePath in selectedFiles) {
+        final inputFile = File(filePath);
+        if (!await inputFile.exists()) {
+          node.logs.add('[ERROR] File not found: $filePath');
+          node.logs
+              .add('[ERROR] Make sure the path is correct and the file exists.');
+          node.executionStatus = 'Input file was not found on disk.';
+          node.failureScope = NodeFailureScope.configuration;
+          setNodeStatus(nodeId, BlockStatus.failed);
+          update([nodeId]);
+          return;
+        }
       }
 
-      final fileBytes = await inputFile.length();
-      final sizeKb = (fileBytes / 1024).toStringAsFixed(1);
-      node.logs.add('[SYSTEM] Input file: $filePath');
-      node.logs.add('[SYSTEM] File size : $sizeKb KB ($fileBytes bytes)');
+      // Log info + sanity-check for each file.
+      for (final filePath in selectedFiles) {
+        final inputFile = File(filePath);
+        final fileBytes = await inputFile.length();
+        final sizeKb = (fileBytes / 1024).toStringAsFixed(1);
+        node.logs.add('[SYSTEM] Input file: $filePath');
+        node.logs.add('[SYSTEM] File size : $sizeKb KB ($fileBytes bytes)');
 
-      // Sanity check: FASTQ/FASTQ.gz files must be at least a few KB.
-      // A 14-byte file means the download failed (curl wrote an error or redirect).
-      final ext = filePath.toLowerCase();
-      final isBioSeqFile = ext.endsWith('.fastq') ||
-          ext.endsWith('.fastq.gz') ||
-          ext.endsWith('.fq') ||
-          ext.endsWith('.fq.gz') ||
-          ext.endsWith('.bam') ||
-          ext.endsWith('.sam') ||
-          ext.endsWith('.vcf') ||
-          ext.endsWith('.vcf.gz');
-      if (isBioSeqFile && fileBytes < 500) {
-        node.logs.add(
-            '[WARNING] ⚠️  File is suspiciously small ($fileBytes bytes) for a biological sequence file.');
-        node.logs.add(
-            '[WARNING]    This usually means the download failed or the file is empty.');
-        node.logs.add(
-            '[WARNING]    Re-download the file and verify it is a valid ${ ext.contains("fastq") ? "FASTQ" : "sequence" } file before running.');
+        // Sanity check: FASTQ/FASTQ.gz files must be at least a few KB.
+        final ext = filePath.toLowerCase();
+        final isBioSeqFile = ext.endsWith('.fastq') ||
+            ext.endsWith('.fastq.gz') ||
+            ext.endsWith('.fq') ||
+            ext.endsWith('.fq.gz') ||
+            ext.endsWith('.bam') ||
+            ext.endsWith('.sam') ||
+            ext.endsWith('.vcf') ||
+            ext.endsWith('.vcf.gz');
+        if (isBioSeqFile && fileBytes < 500) {
+          node.logs.add(
+              '[WARNING] ⚠️  File is suspiciously small ($fileBytes bytes) for a biological sequence file.');
+          node.logs.add(
+              '[WARNING]    This usually means the download failed or the file is empty.');
+          node.logs.add(
+              '[WARNING]    Re-download the file and verify it is a valid ${ext.contains("fastq") ? "FASTQ" : "sequence"} file before running.');
+        }
       }
-      node.logs.add('[SYSTEM] Passing file path to downstream nodes via volume mount.');
+      node.logs.add('[SYSTEM] Passing file path(s) to downstream nodes via volume mount.');
 
-      // Register the raw file path as output so downstream containers
-      // receive it as a volume mount at /inputs/<filename>
-      final existingOut =
-          node.parameters.firstWhereOrNull((p) => p.key == '_output_file');
-      if (existingOut != null) {
-        existingOut.value = filePath;
-      } else {
+      // Register output paths.  Use the first file as '_output_file' (backward
+      // compat with the single-path downstream mechanism) plus '_output_file_N'
+      // entries so callers that understand N-file output can retrieve all of them.
+      node.parameters.removeWhere(
+          (p) => p.key == '_output_file' || RegExp(r'^_output_file_\d+$').hasMatch(p.key));
+      for (int i = 0; i < selectedFiles.length; i++) {
         node.parameters.add(BlockParameter(
-          key: '_output_file',
-          label: 'Output File',
+          key: '_output_file_${i + 1}',
+          label: 'Output File ${i + 1}',
           type: ParameterType.text,
-          value: filePath,
+          value: selectedFiles[i],
         ));
       }
+      node.parameters.add(BlockParameter(
+        key: '_output_file',
+        label: 'Output File',
+        type: ParameterType.text,
+        value: selectedFiles[0],
+      ));
 
-      node.executionStatus = 'Input file prepared successfully.';
+      node.executionStatus = selectedFiles.length == 1
+          ? 'Input file prepared successfully.'
+          : '${selectedFiles.length} input files prepared successfully.';
       node.failureScope = NodeFailureScope.none;
       setNodeStatus(nodeId, BlockStatus.success);
       update([nodeId]);
@@ -917,6 +990,7 @@ class PipelineController extends GetxController {
       // Add input files to volumes and environment
       if (inputFiles != null) {
         bool firstInput = true;
+        int fileIndex = 0;  // for INPUT_FILE_N numbering
         inputFiles.forEach((portName, filePath) {
           var hostPath = filePath;
           // Windows path normalisation
@@ -948,8 +1022,12 @@ class PipelineController extends GetxController {
             normalizedVolumes.add('$hostPath:$containerPath:ro');
             environment
                 .add('INPUT_${portName.toUpperCase()}=$containerPath');
+            // Numbered alias: $INPUT_FILE_1, $INPUT_FILE_2, … (matches chips)
+            fileIndex++;
+            environment.add('INPUT_FILE_$fileIndex=$containerPath');
             if (firstInput &&
                 environment.every((e) => !e.startsWith('INPUT_FILE='))) {
+              // $INPUT_FILE = first file (backward compat for single-input commands)
               environment.add('INPUT_FILE=$containerPath');
             }
           }
@@ -1539,5 +1617,69 @@ class PipelineController extends GetxController {
     
     final currentKeys = activeNode.parameters.map((p) => p.key).toSet();
     return dummy.parameters.where((p) => !currentKeys.contains(p.key)).toList();
+  }
+
+  // ─── Template loading ────────────────────────────────────────────────────────
+
+  /// Populate the current tab's canvas from a [PipelineTemplate].
+  /// Creates all nodes and wires the defined connections in one atomic batch.
+  void loadTemplate(PipelineTemplate template, {String? tabId}) {
+    // Establish tab context so _saveHistoryState and undo/redo work correctly.
+    if (tabId != null) {
+      _currentTabId = tabId;
+      _undoStacks.putIfAbsent(tabId, () => []);
+      _redoStacks.putIfAbsent(tabId, () => []);
+    }
+
+    nodes.clear();
+    connections.clear();
+    selectedNode.value = null;
+    cycleConnectionIds.clear();
+
+    final createdNodes = <PipelineNode>[];
+    for (final def in template.nodes) {
+      final PipelineNode node;
+      if (def.nodeType.startsWith('docker:')) {
+        final fullName = def.nodeType.substring(7);
+        final colonIdx = fullName.indexOf(':');
+        final imageName =
+            colonIdx >= 0 ? fullName.substring(0, colonIdx) : fullName;
+        final tag =
+            colonIdx >= 0 ? fullName.substring(colonIdx + 1) : 'latest';
+        node = _createDockerNode(imageName, def.position, tag: tag);
+      } else {
+        node = _createNodeFromType(def.nodeType, def.position);
+      }
+      for (final entry in def.parameterOverrides.entries) {
+        final param =
+            node.parameters.firstWhereOrNull((p) => p.key == entry.key);
+        if (param != null) param.value = entry.value;
+      }
+      nodes.add(node);
+      createdNodes.add(node);
+    }
+
+    for (final conn in template.connections) {
+      if (conn.fromIndex < createdNodes.length &&
+          conn.toIndex < createdNodes.length) {
+        final from = createdNodes[conn.fromIndex];
+        final to = createdNodes[conn.toIndex];
+        connections.add(Connection(
+          id: const Uuid().v4(),
+          fromNodeId: from.id,
+          toNodeId: to.id,
+          fromPort:
+              from.outputPorts.isNotEmpty ? from.outputPorts.first : 'output',
+          toPort:
+              to.inputPorts.isNotEmpty ? to.inputPorts.first : 'input',
+        ));
+      }
+    }
+
+    _saveHistoryState();
+
+    // Signal the canvas to fit the view so the user sees all template nodes
+    // immediately without having to click "Fit Workflow" manually.
+    fitViewRequest.value++;
   }
 }
