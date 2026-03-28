@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:get/get.dart';
@@ -112,12 +113,23 @@ class _TopBar extends StatelessWidget {
   }
 
   void _showShortcuts() {
+    // Use ⌘ on macOS, Ctrl on Windows/Linux to match what the OS actually sends.
+    final mod = Platform.isMacOS ? '⌘' : 'Ctrl';
+    final shortcuts = [
+      ('$mod + Z', 'Undo'),
+      ('$mod + Shift + Z  /  $mod + Y', 'Redo'),
+      ('Delete / Backspace', 'Remove selected node'),
+      ('Scroll wheel', 'Zoom in / out'),
+      ('Drag on canvas', 'Pan view'),
+      ('Escape', 'Deselect all'),
+    ];
+
     Get.dialog(
       Dialog(
         shape:
             RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         child: Container(
-          width: 420,
+          width: 440,
           padding: const EdgeInsets.all(28),
           child: Column(
             mainAxisSize: MainAxisSize.min,
@@ -129,7 +141,7 @@ class _TopBar extends StatelessWidget {
                       fontWeight: FontWeight.w700,
                       color: Color(0xFF0F172A))),
               const SizedBox(height: 20),
-              ..._shortcuts.map(_shortcutRow),
+              ...shortcuts.map(_shortcutRow),
               const SizedBox(height: 20),
               Align(
                 alignment: Alignment.centerRight,
@@ -144,15 +156,6 @@ class _TopBar extends StatelessWidget {
       ),
     );
   }
-
-  static const _shortcuts = [
-    ('Ctrl + Z', 'Undo'),
-    ('Ctrl + Shift + Z', 'Redo'),
-    ('Delete / Backspace', 'Remove selected node'),
-    ('Scroll wheel', 'Zoom in / out'),
-    ('Drag on canvas', 'Pan view'),
-    ('Escape', 'Deselect all'),
-  ];
 
   Widget _shortcutRow((String, String) s) {
     return Padding(
@@ -213,8 +216,19 @@ class _TopBarButton extends StatelessWidget {
 // Left panel — branding + recent pipelines
 // ─────────────────────────────────────────────────────────────────────────────
 
-class _LeftPanel extends StatelessWidget {
+class _LeftPanel extends StatefulWidget {
   const _LeftPanel();
+
+  @override
+  State<_LeftPanel> createState() => _LeftPanelState();
+}
+
+class _LeftPanelState extends State<_LeftPanel> {
+  // Tracks the single item that is currently hovered.
+  // Keeping this at the parent level ensures only one item can
+  // ever show the hover highlight at a time, preventing the
+  // double-blink bug caused by enter/exit events firing out of order.
+  int? _hoveredIndex;
 
   @override
   Widget build(BuildContext context) {
@@ -259,8 +273,16 @@ class _LeftPanel extends StatelessWidget {
               return ListView.builder(
                 padding: const EdgeInsets.symmetric(vertical: 4),
                 itemCount: ctrl.recentPipelines.length,
-                itemBuilder: (_, i) =>
-                    _RecentItem(item: ctrl.recentPipelines[i], ctrl: ctrl),
+                itemBuilder: (_, i) => _RecentItem(
+                  key: ValueKey(ctrl.recentPipelines[i]['folderPath'] ?? i),
+                  item: ctrl.recentPipelines[i],
+                  ctrl: ctrl,
+                  isHovered: _hoveredIndex == i,
+                  onEnter: () => setState(() => _hoveredIndex = i),
+                  onExit: () => setState(() {
+                    if (_hoveredIndex == i) _hoveredIndex = null;
+                  }),
+                ),
               );
             }),
           ),
@@ -292,35 +314,38 @@ class _LeftPanel extends StatelessWidget {
   }
 }
 
-class _RecentItem extends StatefulWidget {
+class _RecentItem extends StatelessWidget {
   final Map<String, String> item;
   final HomeController ctrl;
-  const _RecentItem({required this.item, required this.ctrl});
+  final bool isHovered;
+  final VoidCallback onEnter;
+  final VoidCallback onExit;
 
-  @override
-  State<_RecentItem> createState() => _RecentItemState();
-}
-
-class _RecentItemState extends State<_RecentItem> {
-  bool _hovering = false;
+  const _RecentItem({
+    super.key,
+    required this.item,
+    required this.ctrl,
+    required this.isHovered,
+    required this.onEnter,
+    required this.onExit,
+  });
 
   @override
   Widget build(BuildContext context) {
-    final name = widget.item['name'] ?? 'Pipeline';
-    final path = widget.item['folderPath'] ?? '';
+    final name = item['name'] ?? 'Pipeline';
+    final path = item['folderPath'] ?? '';
     final short = path.length > 35 ? '…${path.substring(path.length - 35)}' : path;
 
     return MouseRegion(
-      onEnter: (_) => setState(() => _hovering = true),
-      onExit: (_) => setState(() => _hovering = false),
+      onEnter: (_) => onEnter(),
+      onExit: (_) => onExit(),
       child: GestureDetector(
-        onTap: () => widget.ctrl.openRecentPipeline(widget.item),
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 150),
+        onTap: () => ctrl.openRecentPipeline(item),
+        child: Container(
           margin: const EdgeInsets.symmetric(horizontal: 10, vertical: 2),
           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 9),
           decoration: BoxDecoration(
-            color: _hovering
+            color: isHovered
                 ? const Color(0xFFF1F5F9)
                 : Colors.transparent,
             borderRadius: BorderRadius.circular(8),
@@ -363,7 +388,7 @@ class _RecentItemState extends State<_RecentItem> {
                   ],
                 ),
               ),
-              if (_hovering)
+              if (isHovered)
                 const Icon(Icons.chevron_right_rounded,
                     size: 16, color: Color(0xFF94A3B8)),
             ],
