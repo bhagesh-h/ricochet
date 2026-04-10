@@ -8,7 +8,7 @@ void main() {
   // DockerImage
   // ---------------------------------------------------------------------------
   group('DockerImage', () {
-    Map<String, dynamic> _imageJson({
+    Map<String, dynamic> imageJson({
       String repoName = 'alpine',
       String shortDescription = 'A minimal image',
       int starCount = 10000,
@@ -28,7 +28,7 @@ void main() {
         };
 
     test('fromJson parses all fields correctly', () {
-      final img = DockerImage.fromJson(_imageJson());
+      final img = DockerImage.fromJson(imageJson());
       expect(img.repoName, 'alpine');
       expect(img.shortDescription, 'A minimal image');
       expect(img.starCount, 10000);
@@ -46,39 +46,39 @@ void main() {
 
     group('formattedPullCount', () {
       test('billions abbrev', () {
-        final img = DockerImage.fromJson(_imageJson(pullCount: 2000000000));
+        final img = DockerImage.fromJson(imageJson(pullCount: 2000000000));
         expect(img.formattedPullCount, '2.0B');
       });
 
       test('millions abbrev', () {
-        final img = DockerImage.fromJson(_imageJson(pullCount: 5500000));
+        final img = DockerImage.fromJson(imageJson(pullCount: 5500000));
         expect(img.formattedPullCount, '5.5M');
       });
 
       test('thousands abbrev', () {
-        final img = DockerImage.fromJson(_imageJson(pullCount: 3200));
+        final img = DockerImage.fromJson(imageJson(pullCount: 3200));
         expect(img.formattedPullCount, '3.2K');
       });
 
       test('small numbers shown as-is', () {
-        final img = DockerImage.fromJson(_imageJson(pullCount: 999));
+        final img = DockerImage.fromJson(imageJson(pullCount: 999));
         expect(img.formattedPullCount, '999');
       });
 
       test('zero', () {
-        final img = DockerImage.fromJson(_imageJson(pullCount: 0));
+        final img = DockerImage.fromJson(imageJson(pullCount: 0));
         expect(img.formattedPullCount, '0');
       });
     });
 
     group('displayName', () {
       test('includes owner when owner is non-empty', () {
-        final img = DockerImage.fromJson(_imageJson(repoOwner: 'bitnami', repoName: 'redis'));
+        final img = DockerImage.fromJson(imageJson(repoOwner: 'bitnami', repoName: 'redis'));
         expect(img.displayName, 'bitnami/redis');
       });
 
       test('just repo name when owner is empty', () {
-        final img = DockerImage.fromJson(_imageJson(repoOwner: '', repoName: 'ubuntu'));
+        final img = DockerImage.fromJson(imageJson(repoOwner: '', repoName: 'ubuntu'));
         expect(img.displayName, 'ubuntu');
       });
     });

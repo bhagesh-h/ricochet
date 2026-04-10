@@ -1,4 +1,3 @@
-import 'dart:ui';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:Ricochet/models/pipeline_node.dart';
 import 'package:Ricochet/models/pipeline_file.dart';
@@ -96,7 +95,7 @@ void main() {
   // PipelineNode
   // ---------------------------------------------------------------------------
   group('PipelineNode JSON serialization', () {
-    PipelineNode _makeNode() => PipelineNode(
+    PipelineNode makeNode() => PipelineNode(
           id: 'node-abc',
           title: 'Test Node',
           description: 'Does testing',
@@ -118,7 +117,7 @@ void main() {
         );
 
     test('toJson produces expected keys', () {
-      final json = _makeNode().toJson();
+      final json = makeNode().toJson();
       expect(json['id'], 'node-abc');
       expect(json['title'], 'Test Node');
       expect(json['category'], 'processing');
@@ -126,7 +125,7 @@ void main() {
     });
 
     test('fromJson / toJson round-trip preserves all persistent fields', () {
-      final orig = _makeNode();
+      final orig = makeNode();
       final back = PipelineNode.fromJson(orig.toJson());
 
       expect(back.id, orig.id);
@@ -141,7 +140,7 @@ void main() {
     });
 
     test('transient fields reset to defaults after round-trip', () {
-      final node = _makeNode()
+      final node = makeNode()
         ..status = BlockStatus.running
         ..isSelected = true
         ..downloadProgress = 0.75;
@@ -154,7 +153,7 @@ void main() {
     });
 
     test('outputFileName and isAggregator persist', () {
-      final node = _makeNode()
+      final node = makeNode()
         ..outputFileName = 'results.csv'
         ..isAggregator = true;
 

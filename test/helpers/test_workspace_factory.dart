@@ -23,7 +23,7 @@ abstract final class TestWorkspaceFactory {
   static Future<Directory> create({String prefix = 'bioflow_test_'}) async {
     // Use system temp + a high-resolution timestamp + pid combination so that
     // parallel test workers running on the same machine never collide.
-    final suffix = '${DateTime.now().microsecondsSinceEpoch}_${pid}';
+    final suffix = '${DateTime.now().microsecondsSinceEpoch}_$pid';
     final dir = await Directory.systemTemp.createTemp('$prefix$suffix');
     return dir;
   }
