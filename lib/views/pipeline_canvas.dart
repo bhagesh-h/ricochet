@@ -189,6 +189,32 @@ class _PipelineCanvasState extends State<PipelineCanvas>
                 child: _buildZoomControls(),
               ),
 
+              // Floating Delete Button (for "clicking delete")
+              Obx(() {
+                final hasSelectedNode = controller.selectedNode.value != null;
+                final hasSelectedConnection = controller.selectedConnectionId.value != null;
+                
+                if (!hasSelectedNode && !hasSelectedConnection) return const SizedBox.shrink();
+
+                return Positioned(
+                  left: 20,
+                  bottom: 80,
+                  child: FloatingActionButton(
+                    onPressed: () {
+                      if (hasSelectedNode) {
+                        controller.deleteNode(controller.selectedNode.value!);
+                      } else if (hasSelectedConnection) {
+                        controller.deleteConnection(controller.selectedConnectionId.value!);
+                      }
+                    },
+                    backgroundColor: const Color(0xFFEF4444),
+                    elevation: 4,
+                    child: const Icon(Icons.delete_rounded, color: Colors.white),
+                    tooltip: 'Delete Selected',
+                  ),
+                );
+              }),
+
               // Parameter sidebar
               Obx(() {
                 final selectedNode = controller.selectedNode.value;

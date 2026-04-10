@@ -10,8 +10,6 @@ Ricochet lets you build complex bioinformatics analysis pipelines by dragging an
 
 > **"If you can use Figma, you can use Ricochet. If you can run Docker, you can run Ricochet."**
 
-
-
 ## Features
 
 ### Visual Pipeline Canvas
@@ -146,13 +144,11 @@ Right-click or menu option to **duplicate** any node — creates a deep copy wit
 | `failed` | Execution failed |
 | `error` | Image pull or setup error |
 
-
-
 ## Architecture
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│                     Ricochet Desktop App                     │
+│                     Ricochet Desktop App                    │
 │                      (Flutter / Dart)                       │
 ├───────────────┬─────────────────┬───────────────────────────┤
 │  PipelineCanvas│   ToolSidebar  │     ExecutionPanel        │
@@ -193,8 +189,6 @@ Right-click or menu option to **duplicate** any node — creates a deep copy wit
 | Path Handling | `path`, `path_provider` |
 | Archive (Export) | `archive` (ZIP) |
 | Execution Algorithm | Kahn's Topological Sort |
-
-
 
 ## Getting Started
 
@@ -291,8 +285,6 @@ flutter build windows     # MSIX installer
 flutter build linux       # ELF binary
 ```
 
-
-
 ## Usage Walkthrough
 
 1. **Open Ricochet** — a blank canvas tab is created automatically
@@ -303,8 +295,6 @@ flutter build linux       # ELF binary
 6. **Execute** — click the green **Execute** button; the terminal panel slides up showing live logs
 7. **View results** — output files are written to the workspace folder shown in the terminal log
 8. **Export** — click **Export Docker** to download a ready-to-run `docker-compose.yml` project
-
-
 
 ## Workspace Location
 
@@ -334,8 +324,6 @@ Ricochet/
     └── Ricochet-export_2025-06-01T12-00-00.zip
 ```
 
-
-
 ## ⚠️ Platform Notes & Known Limitations
 
 ### All Platforms
@@ -364,8 +352,6 @@ Ricochet/
 - **x86_64 Linux** (most desktops/servers): no platform flag needed — native amd64 containers run without emulation.
 - Open output directory uses `xdg-open` to open the workspace folder in the default file manager.
 - GTK 3 development libraries are required to build the app — see [`requirements.txt`](requirements.txt).
-
-
 
 ## License
 

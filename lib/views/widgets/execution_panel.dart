@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import 'package:get/get.dart';
 import '../../controllers/execution_controller.dart';
 import '../../controllers/pipeline_controller.dart';
+import '../../controllers/system_stats_controller.dart';
 import '../../models/pipeline_node.dart';
 
 class ExecutionPanel extends StatefulWidget {
@@ -16,6 +17,7 @@ class ExecutionPanel extends StatefulWidget {
 class _ExecutionPanelState extends State<ExecutionPanel> {
   final ExecutionController execCtrl = Get.find();
   final PipelineController pipelineCtrl = Get.find();
+  final SystemStatsController statsCtrl = Get.find();
   bool _isResizing = false;
 
   // Scroll controllers for auto-scroll
@@ -39,6 +41,7 @@ class _ExecutionPanelState extends State<ExecutionPanel> {
         _runStartTime = DateTime.now();
         _elapsedSeconds = 0;
         _elapsedTimer?.cancel();
+        statsCtrl.startPolling();
         _elapsedTimer = Timer.periodic(const Duration(seconds: 1), (_) {
           if (mounted) {
             setState(() {
@@ -50,6 +53,7 @@ class _ExecutionPanelState extends State<ExecutionPanel> {
       } else {
         _elapsedTimer?.cancel();
         _elapsedTimer = null;
+        statsCtrl.stopPolling();
       }
     });
   }
@@ -322,6 +326,50 @@ class _ExecutionPanelState extends State<ExecutionPanel> {
                           ],
                         ),
                       ),
+
+                    // Live System Stats (CPU, GPU, Storage)
+                    if (execCtrl.isRunning.value)
+                      Obx(() {
+                        final cpu = statsCtrl.cpuStat.value;
+                        final gpu = statsCtrl.gpuStat.value;
+                        final storage = statsCtrl.storageStat.value;
+
+                        final chips = <Widget>[];
+                        
+                        Widget _buildStatChip(IconData icon, String text) {
+                          return Container(
+                            margin: const EdgeInsets.only(right: 8),
+                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFF1E293B),
+                              border: Border.all(color: const Color(0xFF334155)),
+                              borderRadius: BorderRadius.circular(4),
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(icon, size: 11, color: const Color(0xFF94A3B8)),
+                                const SizedBox(width: 4),
+                                Text(
+                                  text,
+                                  style: const TextStyle(fontSize: 10, color: Color(0xFFCBD5E1), fontFamily: 'monospace'),
+                                ),
+                              ],
+                            ),
+                          );
+                        }
+
+                        if (cpu.isNotEmpty) chips.add(_buildStatChip(Icons.memory, 'CPU: $cpu'));
+                        if (gpu.isNotEmpty) chips.add(_buildStatChip(Icons.developer_board, 'GPU: $gpu'));
+                        if (storage.isNotEmpty) chips.add(_buildStatChip(Icons.storage, storage));
+
+                        if (chips.isEmpty) return const SizedBox.shrink();
+
+                        return Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: chips,
+                        );
+                      }),
 
                     // ── Copy to clipboard (fix #9) ──────────────────────
                     IconButton(

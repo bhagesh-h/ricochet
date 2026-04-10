@@ -184,6 +184,10 @@ class PipelineController extends GetxController {
     _saveHistoryState();
   }
 
+  String _sanitizeNodeName(String raw) {
+    return raw.replaceAll(RegExp(r'[\s:;\"' + "'" + r']+'), '_');
+  }
+
   Future<void> _resolveSmartTag(String nodeId, String imageName) async {
     try {
       final searchCtrl = Get.find<DockerSearchController>();
@@ -222,7 +226,7 @@ class PipelineController extends GetxController {
 
     final json = original.toJson();
     json['id'] = const Uuid().v4();
-    json['title'] = '${original.title} (copy)';
+    json['title'] = _sanitizeNodeName('${original.title}_copy');
     // Offset by 30px so it doesn't stack exactly on top
     final pos = original.position;
     json['position'] = {'dx': pos.dx + 30, 'dy': pos.dy + 30};
@@ -249,7 +253,7 @@ class PipelineController extends GetxController {
       case 'Input':
         return PipelineNode(
           id: id,
-          title: 'Input Data',
+          title: _sanitizeNodeName('Input Data'),
           description: 'Upload your data files',
           position: position,
           category: BlockCategory.input,
@@ -268,7 +272,7 @@ class PipelineController extends GetxController {
       case 'Output':
         return PipelineNode(
           id: id,
-          title: 'Output Results',
+          title: _sanitizeNodeName('Output Results'),
           description: 'Export processed data',
           position: position,
           category: BlockCategory.output,
@@ -295,7 +299,7 @@ class PipelineController extends GetxController {
       case 'FastQC':
         return PipelineNode(
           id: id,
-          title: 'FastQC',
+          title: _sanitizeNodeName('FastQC'),
           description: 'Quality control for sequencing data',
           position: position,
           category: BlockCategory.analysis,
@@ -334,7 +338,7 @@ class PipelineController extends GetxController {
       case 'Trimmomatic':
         return PipelineNode(
           id: id,
-          title: 'Trimmomatic',
+          title: _sanitizeNodeName('Trimmomatic'),
           description: 'Trim and filter sequencing reads',
           position: position,
           category: BlockCategory.processing,
@@ -392,7 +396,7 @@ class PipelineController extends GetxController {
       case 'BWA':
         return PipelineNode(
           id: id,
-          title: 'BWA Aligner',
+          title: _sanitizeNodeName('BWA Aligner'),
           description: 'Align sequences against reference',
           position: position,
           category: BlockCategory.processing,
@@ -431,7 +435,7 @@ class PipelineController extends GetxController {
       case 'STAR':
         return PipelineNode(
           id: id,
-          title: 'STAR Aligner',
+          title: _sanitizeNodeName('STAR Aligner'),
           description: 'Spliced alignment to reference',
           position: position,
           category: BlockCategory.processing,
@@ -471,7 +475,7 @@ class PipelineController extends GetxController {
       case 'Samtools':
         return PipelineNode(
           id: id,
-          title: 'Samtools',
+          title: _sanitizeNodeName('Samtools'),
           description: 'Process SAM/BAM alignments',
           position: position,
           category: BlockCategory.processing,
@@ -503,7 +507,7 @@ class PipelineController extends GetxController {
       default:
         return PipelineNode(
           id: id,
-          title: type,
+          title: _sanitizeNodeName(type),
           description: 'Custom processing block',
           position: position,
           category: BlockCategory.processing,
@@ -536,7 +540,7 @@ class PipelineController extends GetxController {
 
     final node = PipelineNode(
       id: id,
-      title: imageName,
+      title: _sanitizeNodeName(imageName),
       description: '',
       position: position,
       category: BlockCategory.processing,
@@ -743,6 +747,8 @@ class PipelineController extends GetxController {
   Future<void> executeNode(
     String nodeId, {
     Map<String, String>? inputFiles,
+    Map<String, String>? upstreamOutputs,
+    Map<String, List<String>>? upstreamInputs,
   }) async {
     final node = nodes.firstWhereOrNull((n) => n.id == nodeId);
     if (node == null) return;
@@ -937,31 +943,93 @@ class PipelineController extends GetxController {
       final outputSink = outputFile.openWrite();
 
       // Parse parameters (fix #1.2: Robust Arg Parsing)
-      final commandParam = node.parameters
+      var commandParam = node.parameters
           .firstWhereOrNull((p) => p.key == 'command')
           ?.value
           ?.toString();
 
-      List<String> command = [];
-      if (commandParam != null && commandParam.isNotEmpty) {
-        // Use ShellUtils to split arguments correctly (handles quotes/spaces)
-        final parts = ShellUtils.splitArguments(commandParam);
-        // Wrap command in shell to handle pipes, redirects, etc.
-        command = ['sh', '-c', parts.join(' ')];
-      }
-
-      final volumesParam = node.parameters
+      var volumesParam = node.parameters
           .firstWhereOrNull((p) => p.key == 'volumes')
           ?.value
           ?.toString();
+
+      var envParam = node.parameters
+          .firstWhereOrNull((p) => p.key == 'environment')
+          ?.value
+          ?.toString();
+
+      // ─── Resolve Custom .out and .in Variable Expressions ─────────────────
+      final stringReplacements = <String, String>{};
+      final additionalVolumes = <String>[];
+      
+      if (upstreamOutputs != null) {
+        upstreamOutputs.forEach((title, hostPath) {
+          final name = hostPath.split(Platform.pathSeparator).last;
+          final containerPath = '/inputs/$name';
+          stringReplacements['$title.out.'] = '$containerPath/';
+          stringReplacements['$title.out'] = containerPath;
+        });
+      }
+
+      if (upstreamInputs != null) {
+        upstreamInputs.forEach((title, hostPaths) {
+          int count = 1;
+          for (final hostPath in hostPaths) {
+            final isDirectory = FileSystemEntity.isDirectorySync(hostPath);
+            final name = hostPath.split(Platform.pathSeparator).last;
+            
+            String containerPath;
+            if (isDirectory) {
+               containerPath = '/inputs/upstream_${title}_in_${count}_$name';
+            } else {
+               // Mount raw files inside an isolated context mapping folder specifically for this port
+               containerPath = '/inputs/upstream_${title}_in_$count/$name';
+            }
+            
+            var normalizedHostPath = hostPath;
+            if (Platform.isWindows && normalizedHostPath.length >= 2 && normalizedHostPath[1] == ':') {
+               final drive = normalizedHostPath[0].toLowerCase();
+               final rest = normalizedHostPath.substring(2).replaceAll('\\', '/');
+               normalizedHostPath = '/$drive$rest';
+            }
+            additionalVolumes.add('$normalizedHostPath:$containerPath:ro');
+            
+            if (count == 1) {
+              stringReplacements['$title.in.'] = '$containerPath/';
+              stringReplacements['$title.in'] = containerPath;
+            }
+            stringReplacements['$title.in_$count.'] = '$containerPath/';
+            stringReplacements['$title.in_$count'] = containerPath;
+            count++;
+          }
+        });
+      }
+
+      void applyReplacements(void Function(String) updater, String? original) {
+        if (original == null) return;
+        var modified = original;
+        stringReplacements.forEach((key, value) {
+          modified = modified.replaceAll(key, value);
+        });
+        updater(modified);
+      }
+
+      applyReplacements((v) => commandParam = v, commandParam);
+      applyReplacements((v) => volumesParam = v, volumesParam);
+      applyReplacements((v) => envParam = v, envParam);
+
+      List<String> command = [];
+      if (commandParam != null && commandParam!.isNotEmpty) {
+        final parts = ShellUtils.splitArguments(commandParam!);
+        command = ['sh', '-c', parts.join(' ')];
+      }
+
       final volumes = volumesParam != null
-          ? ShellUtils.splitArguments(volumesParam)
+          ? ShellUtils.splitArguments(volumesParam!)
           : <String>[];
 
-      // Fix #1.3: Windows-to-WSL path translation for volumes
       final normalizedVolumes = volumes.map((v) {
         if (!Platform.isWindows) return v;
-        // e.g. C:\path:/container -> /c/path:/container
         final parts = v.split(':');
         if (parts.length >= 2 && parts[0].length == 1) {
           final drive = parts[0].toLowerCase();
@@ -971,12 +1039,10 @@ class PipelineController extends GetxController {
         return v.replaceAll('\\', '/');
       }).toList();
 
-      final envParam = node.parameters
-          .firstWhereOrNull((p) => p.key == 'environment')
-          ?.value
-          ?.toString();
+      normalizedVolumes.addAll(additionalVolumes);
+
       final environment = envParam != null
-          ? ShellUtils.splitArguments(envParam)
+          ? ShellUtils.splitArguments(envParam!)
           : <String>[];
 
       final portsParam = node.parameters

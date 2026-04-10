@@ -10,6 +10,7 @@ import '../models/pipeline_template.dart';
 import '../services/workspace_service.dart';
 import 'pipeline_controller.dart';
 import 'execution_controller.dart';
+import 'home_controller.dart';
 
 class PipelineTabsController extends GetxController {
   final WorkspaceService _workspaceService = WorkspaceService();
@@ -158,33 +159,50 @@ class PipelineTabsController extends GetxController {
     void _doClose() {
       tabs.removeWhere((t) => t.id == id);
       if (tabs.isEmpty) {
-        createNewTab();
+        activeTabId.value = null;
+        Get.find<PipelineController>().clearAll();
+        Get.find<HomeController>().goHome();
       } else if (activeTabId.value == id) {
         switchTab(tabs.last.id);
       }
     }
 
-    if (tab.hasUnsavedChanges) {
-      Get.dialog(
-        AlertDialog(
-          title: const Text('Close Pipeline?'),
-          content: Text('"${tab.name}" has unsaved changes. Close anyway?'),
-          actions: [
-            TextButton(
-              onPressed: () => Get.back(),
-              child: const Text('Cancel'),
-            ),
-            ElevatedButton(
-              style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
-              onPressed: () { Get.back(); _doClose(); },
-              child: const Text('Close', style: TextStyle(color: Colors.white)),
-            ),
-          ],
-        ),
-      );
-    } else {
-      _doClose();
-    }
+    Get.dialog(
+      AlertDialog(
+        title: const Text('Close Session'),
+        content: Text('Do you want to save "${tab.name}" for later? \n\nIf you discard it, this pipeline session will be permanently deleted and will not appear when you restart.'),
+        actions: [
+          TextButton(
+            onPressed: () => Get.back(),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.red.shade600),
+            onPressed: () async {
+              Get.back(); // close dialog
+              final dir = Directory(tab.folderPath);
+              if (await dir.exists()) {
+                await dir.delete(recursive: true); // physically delete so it won't show on restart
+              }
+              _doClose();
+            },
+            child: const Text('Discard', style: TextStyle(color: Colors.white)),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF6366F1)),
+            onPressed: () {
+              Get.back();
+              // Auto-save logic already persists it, but we can enforce it:
+              if (activeTabId.value == id) {
+                _saveActiveTabToDisk();
+              }
+              _doClose();
+            },
+            child: const Text('Save & Close', style: TextStyle(color: Colors.white)),
+          ),
+        ],
+      ),
+    );
   }
 
   Future<void> renameTab(String id, String newName) async {

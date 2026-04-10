@@ -7,6 +7,7 @@ import 'controllers/execution_controller.dart';
 import 'controllers/docker_controller.dart';
 import 'controllers/pipeline_tabs_controller.dart';
 import 'controllers/home_controller.dart';
+import 'controllers/system_stats_controller.dart';
 import 'views/home_screen.dart';
 import 'views/pipeline_canvas.dart';
 import 'views/tool_sidebar.dart';
@@ -25,6 +26,7 @@ void main() {
   Get.put(PipelineTabsController());
   // HomeController manages home ↔ editor navigation
   Get.put(HomeController());
+  Get.put(SystemStatsController());
 
   runApp(const MyApp());
 }

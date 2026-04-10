@@ -108,16 +108,27 @@ class WorkspaceService {
     return dir.path;
   }
 
+  /// Get a custom formatted timestamp (ss_mm_hh_DD_MM_YYYY)
+  String _getCustomTimestamp() {
+    final now = DateTime.now();
+    final ss = now.second.toString().padLeft(2, '0');
+    final mm = now.minute.toString().padLeft(2, '0');
+    final hh = now.hour.toString().padLeft(2, '0');
+    final dd = now.day.toString().padLeft(2, '0');
+    final M = now.month.toString().padLeft(2, '0');
+    final yyyy = now.year.toString();
+    return '${ss}_${mm}_${hh}_${dd}_${M}_$yyyy';
+  }
+
   /// Create a new run directory for this execution
   Future<Directory> createRunDirectory({String? pipelineName}) async {
     final runsDir = await getRunsDirectory();
-    final timestamp =
-        DateTime.now().toIso8601String().replaceAll(':', '-').split('.')[0];
+    final timestamp = _getCustomTimestamp();
     final pipelineSegment = _sanitizeRunSegment(pipelineName);
 
     final baseName = pipelineSegment.isEmpty
-        ? 'run_$timestamp'
-        : 'run_${pipelineSegment}_$timestamp';
+        ? 'Run_$timestamp'
+        : '${pipelineSegment}_$timestamp';
 
     var runDirPath = path.join(runsDir.path, baseName);
     var attempt = 1;
@@ -165,12 +176,19 @@ class WorkspaceService {
       String nodeId, String nodeName) async {
     final runDir = await getCurrentRunDirectory();
     final sanitizedName = nodeName.replaceAll(RegExp(r'[^a-zA-Z0-9_-]'), '_');
-    final nodeDirPath = path.join(runDir.path, '${sanitizedName}_$nodeId');
+    // Using _$timestamp as requested
+    final timestamp = _getCustomTimestamp();
+    final nodeDirPath = path.join(runDir.path, '${sanitizedName}_$timestamp');
 
-    final nodeDir = Directory(nodeDirPath);
-    if (!await nodeDir.exists()) {
-      await nodeDir.create(recursive: true);
+    var actualPath = nodeDirPath;
+    var attempt = 1;
+    while (await Directory(actualPath).exists()) {
+      attempt++;
+      actualPath = '${nodeDirPath}_$attempt';
     }
+
+    final nodeDir = Directory(actualPath);
+    await nodeDir.create(recursive: true);
 
     return nodeDir;
   }
@@ -189,7 +207,6 @@ class WorkspaceService {
 
     return entities
         .whereType<Directory>()
-        .where((dir) => path.basename(dir.path).startsWith('run_'))
         .toList();
   }
 
