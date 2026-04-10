@@ -124,7 +124,15 @@ class _ParameterSidebarState extends State<ParameterSidebar> {
                     controller.deleteNode(widget.node.id);
                     controller.selectNode(null);
                   },
-                  icon: const Icon(Icons.delete_outline, color: Color(0xFFEF4444), size: 20),
+                  icon: Container(
+                    padding: const EdgeInsets.all(6),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFEF4444).withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: const Icon(Icons.delete_outline_rounded,
+                        color: Color(0xFFEF4444), size: 20),
+                  ),
                   tooltip: 'Delete block',
                 ),
                 IconButton(

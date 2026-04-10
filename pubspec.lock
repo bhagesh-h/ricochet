@@ -185,22 +185,6 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "0.7.12"
-  dio:
-    dependency: "direct main"
-    description:
-      name: dio
-      sha256: d90ee57923d1828ac14e492ca49440f65477f4bb1263575900be731a3dac66a9
-      url: "https://pub.dev"
-    source: hosted
-    version: "5.9.0"
-  dio_web_adapter:
-    dependency: transitive
-    description:
-      name: dio_web_adapter
-      sha256: "7586e476d70caecaf1686d21eee7247ea43ef5c345eab9e0cc3583ff13378d78"
-      url: "https://pub.dev"
-    source: hosted
-    version: "2.1.1"
   fake_async:
     dependency: "direct dev"
     description:
@@ -757,7 +741,7 @@ packages:
     source: hosted
     version: "4.5.1"
   vector_math:
-    dependency: "direct main"
+    dependency: transitive
     description:
       name: vector_math
       sha256: d530bd74fea330e6e364cda7a85019c434070188383e1cd8d9777ee586914c5b
@@ -837,7 +821,7 @@ packages:
     source: hosted
     version: "6.6.1"
   yaml:
-    dependency: "direct main"
+    dependency: transitive
     description:
       name: yaml
       sha256: b9da305ac7c39faa3f030eccd175340f968459dae4af175130b3fc47e40d76ce

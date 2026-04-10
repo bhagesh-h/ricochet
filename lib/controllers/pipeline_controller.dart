@@ -14,7 +14,6 @@ import 'pipeline_tabs_controller.dart';
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
-import 'dart:ui';
 import '../utils/shell_utils.dart';
 
 class PipelineController extends GetxController {

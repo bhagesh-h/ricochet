@@ -1,6 +1,5 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:get/get.dart';
 import '../controllers/home_controller.dart';
 import '../models/pipeline_template.dart';
@@ -224,11 +223,6 @@ class _LeftPanel extends StatefulWidget {
 }
 
 class _LeftPanelState extends State<_LeftPanel> {
-  // Tracks the single item that is currently hovered.
-  // Keeping this at the parent level ensures only one item can
-  // ever show the hover highlight at a time, preventing the
-  // double-blink bug caused by enter/exit events firing out of order.
-  int? _hoveredIndex;
 
   @override
   Widget build(BuildContext context) {
@@ -277,11 +271,6 @@ class _LeftPanelState extends State<_LeftPanel> {
                   key: ValueKey(ctrl.recentPipelines[i]['folderPath'] ?? i),
                   item: ctrl.recentPipelines[i],
                   ctrl: ctrl,
-                  isHovered: _hoveredIndex == i,
-                  onEnter: () => setState(() => _hoveredIndex = i),
-                  onExit: () => setState(() {
-                    if (_hoveredIndex == i) _hoveredIndex = null;
-                  }),
                 ),
               );
             }),
@@ -314,38 +303,41 @@ class _LeftPanelState extends State<_LeftPanel> {
   }
 }
 
-class _RecentItem extends StatelessWidget {
+class _RecentItem extends StatefulWidget {
   final Map<String, String> item;
   final HomeController ctrl;
-  final bool isHovered;
-  final VoidCallback onEnter;
-  final VoidCallback onExit;
 
   const _RecentItem({
     super.key,
     required this.item,
     required this.ctrl,
-    required this.isHovered,
-    required this.onEnter,
-    required this.onExit,
   });
 
   @override
+  State<_RecentItem> createState() => _RecentItemState();
+}
+
+class _RecentItemState extends State<_RecentItem> {
+  bool _isHovered = false;
+
+  @override
   Widget build(BuildContext context) {
+    final item = widget.item;
+    final ctrl = widget.ctrl;
     final name = item['name'] ?? 'Pipeline';
     final path = item['folderPath'] ?? '';
     final short = path.length > 35 ? '…${path.substring(path.length - 35)}' : path;
 
     return MouseRegion(
-      onEnter: (_) => onEnter(),
-      onExit: (_) => onExit(),
+      onEnter: (_) => setState(() => _isHovered = true),
+      onExit: (_) => setState(() => _isHovered = false),
       child: GestureDetector(
         onTap: () => ctrl.openRecentPipeline(item),
         child: Container(
           margin: const EdgeInsets.symmetric(horizontal: 10, vertical: 2),
           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 9),
           decoration: BoxDecoration(
-            color: isHovered
+            color: _isHovered
                 ? const Color(0xFFF1F5F9)
                 : Colors.transparent,
             borderRadius: BorderRadius.circular(8),
@@ -388,7 +380,7 @@ class _RecentItem extends StatelessWidget {
                   ],
                 ),
               ),
-              if (isHovered)
+              if (_isHovered)
                 const Icon(Icons.chevron_right_rounded,
                     size: 16, color: Color(0xFF94A3B8)),
             ],
@@ -828,8 +820,6 @@ class _TemplatePreviewDialogState extends State<_TemplatePreviewDialog> {
   final Map<String, double> _downloadProgress = {};
   String? _currentDownloading;
   String? _errorMessage;
-
-  DockerService get _docker => DockerService();
 
   @override
   void initState() {
