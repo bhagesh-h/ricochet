@@ -15,6 +15,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import '../utils/shell_utils.dart';
+import 'package:path/path.dart' as path;
 
 class PipelineController extends GetxController {
   final DockerService _dockerService = DockerService();
@@ -61,6 +62,10 @@ class PipelineController extends GetxController {
         .map((c) => Connection.fromJson(c.toJson()))
         .toList();
     selectedNode.value = null;
+    selectedConnectionId.value = null;
+
+    _saveHistoryState();
+    fitViewRequest.value++;
 
     // Initialize undo stack if empty
     if (!_undoStacks.containsKey(tab.id)) {
@@ -298,7 +303,7 @@ class PipelineController extends GetxController {
       case 'FastQC':
         return PipelineNode(
           id: id,
-          title: _sanitizeNodeName('FastQC'),
+          title: _sanitizeNodeName('staphb/fastqc'),
           description: 'Quality control for sequencing data',
           position: position,
           category: BlockCategory.analysis,
@@ -337,7 +342,7 @@ class PipelineController extends GetxController {
       case 'Trimmomatic':
         return PipelineNode(
           id: id,
-          title: _sanitizeNodeName('Trimmomatic'),
+          title: _sanitizeNodeName('staphb/trimmomatic'),
           description: 'Trim and filter sequencing reads',
           position: position,
           category: BlockCategory.processing,
@@ -395,7 +400,7 @@ class PipelineController extends GetxController {
       case 'BWA':
         return PipelineNode(
           id: id,
-          title: _sanitizeNodeName('BWA Aligner'),
+          title: _sanitizeNodeName('staphb/bwa'),
           description: 'Align sequences against reference',
           position: position,
           category: BlockCategory.processing,
@@ -434,7 +439,7 @@ class PipelineController extends GetxController {
       case 'STAR':
         return PipelineNode(
           id: id,
-          title: _sanitizeNodeName('STAR Aligner'),
+          title: _sanitizeNodeName('staphb/star'),
           description: 'Spliced alignment to reference',
           position: position,
           category: BlockCategory.processing,
@@ -474,7 +479,7 @@ class PipelineController extends GetxController {
       case 'Samtools':
         return PipelineNode(
           id: id,
-          title: _sanitizeNodeName('Samtools'),
+          title: _sanitizeNodeName('staphb/samtools'),
           description: 'Process SAM/BAM alignments',
           position: position,
           category: BlockCategory.processing,
@@ -748,6 +753,7 @@ class PipelineController extends GetxController {
     Map<String, String>? inputFiles,
     Map<String, String>? upstreamOutputs,
     Map<String, List<String>>? upstreamInputs,
+    String? pipelineName,
   }) async {
     final node = nodes.firstWhereOrNull((n) => n.id == nodeId);
     if (node == null) return;
@@ -932,12 +938,9 @@ class PipelineController extends GetxController {
       node.logs.clear();
       update([node.id]);
 
-      // Create output file
-      final outputFilePath = await _workspaceService.getNodeOutputFilePath(
-        node.id,
-        node.title,
-        filename: 'output.txt',
-      );
+      // Create staging output directory
+      final stagingDir = await _workspaceService.createStagingDirectory(node.title);
+      final outputFilePath = path.join(stagingDir.path, 'output.txt');
       final outputFile = File(outputFilePath);
       final outputSink = outputFile.openWrite();
 
@@ -1235,27 +1238,42 @@ class PipelineController extends GetxController {
       await outputSink.flush();
       await outputSink.close();
 
+      // ── Finalize Output (Deduplication / Versioning) ──
+      node.logs.add('[SYSTEM] Finalizing results...');
+      update([node.id]);
+      
+      final finalOutputPath = await _workspaceService.finalizeNodeOutput(
+        stagingPath: stagingDir.path,
+        pipelineName: pipelineName ?? 'Current Pipeline',
+        nodeName: node.title,
+        explicitOverridePath: node.outputDirectory,
+      );
+      
+      final finalOutputFilePath = path.join(finalOutputPath, 'output.txt');
       print('🏁 Node ${node.title} finished with exit code $exitCode');
-      print('📁 Output saved to: $outputFilePath');
+      print('📁 Final output path: $finalOutputPath');
 
-      // Store output file path in node
-      node.logs.add('[SYSTEM] Output saved to: $outputFilePath');
-
-      // Add output file path as a parameter for reference
+      // Update node parameters with the final path for downstream tools
       final outputParam = node.parameters.firstWhereOrNull(
         (p) => p.key == '_output_file',
       );
       if (outputParam != null) {
-        outputParam.value = outputFilePath;
+        outputParam.value = finalOutputFilePath;
       } else {
         node.parameters.add(
           BlockParameter(
             key: '_output_file',
             label: 'Output File',
             type: ParameterType.text,
-            value: outputFilePath,
+            value: finalOutputFilePath,
           ),
         );
+      }
+      
+      // Update node logs with the final path
+      node.logs.add('[SYSTEM] Results finalized at: $finalOutputPath');
+      if (finalOutputPath != stagingDir.path) {
+          node.logs.add('[SYSTEM] (Results were identical to a previous run or moved to a stable path)');
       }
 
       if (exitCode == 0) {
@@ -1432,10 +1450,14 @@ class PipelineController extends GetxController {
       return;
     }
 
+    final safeContext = Get.context;
+
     try {
-      // Show progress dialog
-      Get.dialog(
-        const Dialog(
+      // Show progress dialog using standard Flutter showDialog to avoid GetX router desync
+      showDialog(
+        context: Get.overlayContext!,
+        barrierDismissible: false,
+        builder: (context) => const Dialog(
           child: Padding(
             padding: EdgeInsets.all(24.0),
             child: Column(
@@ -1451,67 +1473,87 @@ class PipelineController extends GetxController {
             ),
           ),
         ),
-        barrierDismissible: false,
       );
 
       // Validate cycles and format before generating
       final sortedNodes = getExecutionOrder();
+      
+      // Get the pipeline name
+      final tabsCtrl = Get.find<PipelineTabsController>();
+      final pipelineName = tabsCtrl.currentPipeline?.name ?? 'Ricochet-Pipeline';
 
       // Generate the ZIP
       final zipBytes = await _exportService.generateExportZip(
         sortedNodes,
         connections,
+        pipelineName,
       );
 
       final timestamp = DateTime.now()
           .toIso8601String()
           .replaceAll(':', '-')
           .split('.')[0];
+      final safeName = pipelineName.replaceAll(RegExp(r'[^a-zA-Z0-9_\-]'), '_');
       final filepath = await _workspaceService.saveExportZip(
         zipBytes,
-        'Ricochet-export_$timestamp.zip',
+        '${safeName}_export_$timestamp.zip',
       );
 
-      // Close dialog
-      Get.back();
+      // Close dialog safely
+      Navigator.of(Get.overlayContext!).pop();
 
-      // Show success
-      Get.snackbar(
-        'Export Successful',
-        'Pipeline exported to $filepath',
-        snackPosition: SnackPosition.BOTTOM,
-        backgroundColor: const Color(0xFF10B981),
-        colorText: const Color(0xFFFFFFFF),
-        mainButton: TextButton(
-          onPressed: () async {
-            final uri = Uri.file(File(filepath).parent.path);
-            if (await canLaunchUrl(uri)) {
-              await launchUrl(uri);
-            }
-          },
-          child: const Text('OPEN', style: TextStyle(color: Colors.white)),
-        ),
-      );
+      // Show success using native Flutter to bypass GetX's overlay unmount bugs
+      if (safeContext != null && safeContext.mounted) {
+        ScaffoldMessenger.of(safeContext).showSnackBar(
+          SnackBar(
+            content: Text('Pipeline exported to $filepath'),
+            backgroundColor: const Color(0xFF10B981),
+            behavior: SnackBarBehavior.floating,
+            action: SnackBarAction(
+              label: 'OPEN',
+              textColor: Colors.white,
+              onPressed: () async {
+                final uri = Uri.file(File(filepath).parent.path);
+                if (await canLaunchUrl(uri)) {
+                  await launchUrl(uri);
+                }
+              },
+            ),
+          ),
+        );
+      }
     } catch (e) {
-      Get.back(); // close dialog
-
-      Get.snackbar(
-        'Export Failed',
-        e.toString(),
-        snackPosition: SnackPosition.BOTTOM,
-        backgroundColor: const Color(0xFFEF4444),
-        colorText: const Color(0xFFFFFFFF),
-      );
+      Navigator.of(Get.overlayContext!).pop();
+      
+      if (safeContext != null && safeContext.mounted) {
+        ScaffoldMessenger.of(safeContext).showSnackBar(
+          SnackBar(
+            content: Text('Could not generate export: $e'),
+            backgroundColor: Colors.red.shade600,
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
     }
   }
 
   /// Opens the output directory in the file explorer
   Future<void> openOutputDirectory() async {
     try {
-      final workspacePath = await _workspaceService.getWorkspacePath();
-      final currentRunPath = await _workspaceService.getCurrentRunPath();
-
-      final pathToOpen = currentRunPath ?? workspacePath;
+      String pathToOpen;
+      
+      try {
+        final tabsCtrl = Get.find<PipelineTabsController>();
+        final activeTab = tabsCtrl.currentPipeline;
+        if (activeTab != null) {
+          final pipelineFolder = await _workspaceService.createPipelineFolder(activeTab.name);
+          pathToOpen = pipelineFolder;
+        } else {
+           pathToOpen = await _workspaceService.getWorkspacePath();
+        }
+      } catch (e) {
+         pathToOpen = await _workspaceService.getWorkspacePath();
+      }
 
       if (Platform.isMacOS) {
         await Process.run('open', [pathToOpen]);

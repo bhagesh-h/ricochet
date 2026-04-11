@@ -179,11 +179,13 @@ class _EditorScaffold extends StatelessWidget {
               ),
               child: TextButton.icon(
                 onPressed: () async {
-                  final result = await FilePicker.platform.getDirectoryPath(
-                    dialogTitle: 'Select Pipeline Folder',
+                  final result = await FilePicker.platform.pickFiles(
+                    dialogTitle: 'Select Pipeline Export (.zip, .env, or folder)',
+                    type: FileType.custom,
+                    allowedExtensions: ['zip', 'env', 'json'],
                   );
-                  if (result != null) {
-                    Get.find<PipelineTabsController>().importPipeline(result);
+                  if (result != null && result.files.single.path != null) {
+                    Get.find<PipelineTabsController>().importPipeline(result.files.single.path!);
                   }
                 },
                 icon: const Icon(

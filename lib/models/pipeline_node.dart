@@ -129,6 +129,7 @@ class PipelineNode {
   
   // Export Settings
   String? outputFileName;
+  String? outputDirectory;
   bool isAggregator;
 
   @JsonKey(includeFromJson: false, includeToJson: false)
@@ -153,6 +154,7 @@ class PipelineNode {
     this.failureScope = NodeFailureScope.none,
     this.executionStatus,
     this.outputFileName,
+    this.outputDirectory,
     this.isAggregator = false,
     List<String>? logs,
   }) : logs = logs ?? [];

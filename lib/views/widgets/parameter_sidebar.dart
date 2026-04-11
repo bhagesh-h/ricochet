@@ -1097,6 +1097,53 @@ class _ParameterSidebarState extends State<ParameterSidebar> {
                 },
               ),
               const SizedBox(height: 16),
+              const Text('Explicit Output Directory (Optional)', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: Color(0xFF374151))),
+              const SizedBox(height: 8),
+              Row(
+                children: [
+                  Expanded(
+                    child: TextFormField(
+                      controller: TextEditingController(text: widget.node.outputDirectory ?? ''),
+                      readOnly: true,
+                      style: const TextStyle(fontSize: 12, fontFamily: 'monospace'),
+                      decoration: _inputDecoration('Stable path override...'),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  IconButton(
+                    onPressed: () async {
+                      try {
+                        String? selectedDirectory = await FilePicker.platform.getDirectoryPath();
+                        if (selectedDirectory != null) {
+                          setState(() => widget.node.outputDirectory = selectedDirectory);
+                        }
+                      } catch (e) {
+                         Get.snackbar('Error', 'Could not open folder picker: $e', snackPosition: SnackPosition.BOTTOM);
+                      }
+                    },
+                    icon: const Icon(Icons.folder_open_rounded, size: 20),
+                    style: IconButton.styleFrom(
+                      backgroundColor: Colors.white,
+                      foregroundColor: widget.node.primaryColor,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(6),
+                        side: BorderSide(color: const Color(0xFFD1D5DB)),
+                      ),
+                    ),
+                  ),
+                  if (widget.node.outputDirectory != null) ...[
+                    const SizedBox(width: 4),
+                    IconButton(
+                      onPressed: () => setState(() => widget.node.outputDirectory = null),
+                      icon: const Icon(Icons.clear_rounded, size: 16),
+                      padding: EdgeInsets.zero,
+                      constraints: const BoxConstraints(),
+                      color: Colors.red[300],
+                    ),
+                  ],
+                ],
+              ),
+              const SizedBox(height: 16),
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [

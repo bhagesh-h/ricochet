@@ -13,10 +13,12 @@ BlockParameter _$BlockParameterFromJson(Map<String, dynamic> json) =>
       label: json['label'] as String,
       type: $enumDecode(_$ParameterTypeEnumMap, json['type']),
       value: json['value'],
-      options:
-          (json['options'] as List<dynamic>?)?.map((e) => e as String).toList(),
+      options: (json['options'] as List<dynamic>?)
+          ?.map((e) => e as String)
+          .toList(),
       placeholder: json['placeholder'] as String?,
       required: json['required'] as bool? ?? false,
+      isAuto: json['isAuto'] as bool? ?? false,
     );
 
 Map<String, dynamic> _$BlockParameterToJson(BlockParameter instance) =>
@@ -29,6 +31,7 @@ Map<String, dynamic> _$BlockParameterToJson(BlockParameter instance) =>
       'options': instance.options,
       'placeholder': instance.placeholder,
       'required': instance.required,
+      'isAuto': instance.isAuto,
     };
 
 const _$ParameterTypeEnumMap = {
@@ -41,28 +44,32 @@ const _$ParameterTypeEnumMap = {
 };
 
 PipelineNode _$PipelineNodeFromJson(Map<String, dynamic> json) => PipelineNode(
-      id: json['id'] as String,
-      title: json['title'] as String,
-      description: json['description'] as String,
-      position: const OffsetConverter()
-          .fromJson(json['position'] as Map<String, dynamic>),
-      category: $enumDecode(_$BlockCategoryEnumMap, json['category']),
-      parameters: (json['parameters'] as List<dynamic>)
-          .map((e) => BlockParameter.fromJson(e as Map<String, dynamic>))
-          .toList(),
-      inputPorts: (json['inputPorts'] as List<dynamic>?)
-              ?.map((e) => e as String)
-              .toList() ??
-          const ['input'],
-      outputPorts: (json['outputPorts'] as List<dynamic>?)
-              ?.map((e) => e as String)
-              .toList() ??
-          const ['output'],
-      iconCodePoint: json['iconCodePoint'] as String,
-      dockerImage: json['dockerImage'] as String?,
-      outputFileName: json['outputFileName'] as String?,
-      isAggregator: json['isAggregator'] as bool? ?? false,
-    );
+  id: json['id'] as String,
+  title: json['title'] as String,
+  description: json['description'] as String,
+  position: const OffsetConverter().fromJson(
+    json['position'] as Map<String, dynamic>,
+  ),
+  category: $enumDecode(_$BlockCategoryEnumMap, json['category']),
+  parameters: (json['parameters'] as List<dynamic>)
+      .map((e) => BlockParameter.fromJson(e as Map<String, dynamic>))
+      .toList(),
+  inputPorts:
+      (json['inputPorts'] as List<dynamic>?)
+          ?.map((e) => e as String)
+          .toList() ??
+      const ['input'],
+  outputPorts:
+      (json['outputPorts'] as List<dynamic>?)
+          ?.map((e) => e as String)
+          .toList() ??
+      const ['output'],
+  iconCodePoint: json['iconCodePoint'] as String,
+  dockerImage: json['dockerImage'] as String?,
+  outputFileName: json['outputFileName'] as String?,
+  outputDirectory: json['outputDirectory'] as String?,
+  isAggregator: json['isAggregator'] as bool? ?? false,
+);
 
 Map<String, dynamic> _$PipelineNodeToJson(PipelineNode instance) =>
     <String, dynamic>{
@@ -77,6 +84,7 @@ Map<String, dynamic> _$PipelineNodeToJson(PipelineNode instance) =>
       'iconCodePoint': instance.iconCodePoint,
       'dockerImage': instance.dockerImage,
       'outputFileName': instance.outputFileName,
+      'outputDirectory': instance.outputDirectory,
       'isAggregator': instance.isAggregator,
     };
 
@@ -89,16 +97,18 @@ const _$BlockCategoryEnumMap = {
 };
 
 Connection _$ConnectionFromJson(Map<String, dynamic> json) => Connection(
-      id: json['id'] as String,
-      fromNodeId: json['fromNodeId'] as String,
-      toNodeId: json['toNodeId'] as String,
-      fromPort: json['fromPort'] as String? ?? 'output',
-      toPort: json['toPort'] as String? ?? 'input',
-      fromPoint: const NullableOffsetConverter()
-          .fromJson(json['fromPoint'] as Map<String, dynamic>?),
-      toPoint: const NullableOffsetConverter()
-          .fromJson(json['toPoint'] as Map<String, dynamic>?),
-    );
+  id: json['id'] as String,
+  fromNodeId: json['fromNodeId'] as String,
+  toNodeId: json['toNodeId'] as String,
+  fromPort: json['fromPort'] as String? ?? 'output',
+  toPort: json['toPort'] as String? ?? 'input',
+  fromPoint: const NullableOffsetConverter().fromJson(
+    json['fromPoint'] as Map<String, dynamic>?,
+  ),
+  toPoint: const NullableOffsetConverter().fromJson(
+    json['toPoint'] as Map<String, dynamic>?,
+  ),
+);
 
 Map<String, dynamic> _$ConnectionToJson(Connection instance) =>
     <String, dynamic>{

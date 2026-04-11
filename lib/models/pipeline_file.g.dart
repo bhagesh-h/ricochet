@@ -7,18 +7,20 @@ part of 'pipeline_file.dart';
 // **************************************************************************
 
 PipelineFile _$PipelineFileFromJson(Map<String, dynamic> json) => PipelineFile(
-      id: json['id'] as String,
-      name: json['name'] as String,
-      folderPath: json['folderPath'] as String,
-      nodes: (json['nodes'] as List<dynamic>?)
-              ?.map((e) => PipelineNode.fromJson(e as Map<String, dynamic>))
-              .toList() ??
-          const [],
-      connections: (json['connections'] as List<dynamic>?)
-              ?.map((e) => Connection.fromJson(e as Map<String, dynamic>))
-              .toList() ??
-          const [],
-    );
+  id: json['id'] as String,
+  name: json['name'] as String,
+  folderPath: json['folderPath'] as String,
+  nodes:
+      (json['nodes'] as List<dynamic>?)
+          ?.map((e) => PipelineNode.fromJson(e as Map<String, dynamic>))
+          .toList() ??
+      const [],
+  connections:
+      (json['connections'] as List<dynamic>?)
+          ?.map((e) => Connection.fromJson(e as Map<String, dynamic>))
+          .toList() ??
+      const [],
+);
 
 Map<String, dynamic> _$PipelineFileToJson(PipelineFile instance) =>
     <String, dynamic>{
