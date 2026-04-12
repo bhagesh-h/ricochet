@@ -7,6 +7,7 @@ import 'controllers/execution_controller.dart';
 import 'controllers/docker_controller.dart';
 import 'controllers/pipeline_tabs_controller.dart';
 import 'controllers/home_controller.dart';
+import 'controllers/system_stats_controller.dart';
 import 'views/home_screen.dart';
 import 'views/pipeline_canvas.dart';
 import 'views/tool_sidebar.dart';
@@ -25,6 +26,7 @@ void main() {
   Get.put(PipelineTabsController());
   // HomeController manages home ↔ editor navigation
   Get.put(HomeController());
+  Get.put(SystemStatsController());
 
   runApp(const MyApp());
 }
@@ -177,11 +179,13 @@ class _EditorScaffold extends StatelessWidget {
               ),
               child: TextButton.icon(
                 onPressed: () async {
-                  final result = await FilePicker.platform.getDirectoryPath(
-                    dialogTitle: 'Select Pipeline Folder',
+                  final result = await FilePicker.platform.pickFiles(
+                    dialogTitle: 'Select Pipeline Export (.zip, .env, or folder)',
+                    type: FileType.custom,
+                    allowedExtensions: ['zip', 'env', 'json'],
                   );
-                  if (result != null) {
-                    Get.find<PipelineTabsController>().importPipeline(result);
+                  if (result != null && result.files.single.path != null) {
+                    Get.find<PipelineTabsController>().importPipeline(result.files.single.path!);
                   }
                 },
                 icon: const Icon(

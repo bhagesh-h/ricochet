@@ -10,6 +10,7 @@ import '../models/pipeline_template.dart';
 import '../services/workspace_service.dart';
 import 'pipeline_controller.dart';
 import 'execution_controller.dart';
+import 'home_controller.dart';
 
 class PipelineTabsController extends GetxController {
   final WorkspaceService _workspaceService = WorkspaceService();
@@ -45,7 +46,6 @@ class PipelineTabsController extends GetxController {
     try {
       final recent = await _workspaceService.listRecentPipelines();
       if (recent.isEmpty) {
-        await createNewTab();
         return;
       }
 
@@ -64,14 +64,13 @@ class PipelineTabsController extends GetxController {
         switchTab(tabs.first.id);
       }
     } catch (e) {
-      print('Session restore failed, starting fresh: $e');
-      await createNewTab();
+      print('Session restore failed: $e');
     }
   }
 
   Future<void> createNewTab() async {
     final id = const Uuid().v4();
-    final folderName = 'Untitled Pipeline ${tabs.length + 1}';
+    final folderName = 'Untitled_Pipeline_${tabs.length + 1}';
     final folderPath = await _workspaceService.createPipelineFolder(folderName);
     
     final newTab = PipelineFile(
@@ -105,8 +104,38 @@ class PipelineTabsController extends GetxController {
     pipelineCtrl.saveStateToPipelineFile(tab);
     
     final jsonData = jsonEncode(tab.toJson());
-    final filePath = p.join(tab.folderPath, 'pipeline.json');
+    
+    final now = DateTime.now();
+    final ss = now.second.toString().padLeft(2, '0');
+    final mm = now.minute.toString().padLeft(2, '0');
+    final hh = now.hour.toString().padLeft(2, '0');
+    final DD = now.day.toString().padLeft(2, '0');
+    final MM = now.month.toString().padLeft(2, '0');
+    final YYYY = now.year.toString();
+    final timestamp = '${ss}_${mm}_${hh}_${DD}_${MM}_${YYYY}';
+
+    final filePath = p.join(tab.folderPath, 'pipeline_$timestamp.json');
+    
+    final dir = Directory(tab.folderPath);
+    if (!await dir.exists()) {
+      await dir.create(recursive: true);
+    }
+    
     await File(filePath).writeAsString(jsonData);
+    
+    // Clear old pipeline*.json versions ONLY AFTER successful write
+    if (await dir.exists()) {
+      await for (final entity in dir.list()) {
+        final bName = p.basename(entity.path);
+        if (entity is File && bName.startsWith('pipeline') && bName.endsWith('.json') && entity.path != filePath) {
+          try {
+            await entity.delete();
+          } catch (e) {
+            print('⚠️ Skipping deletion of locked pipeline version: $bName - $e');
+          }
+        }
+      }
+    }
     
     tab.hasUnsavedChanges = false;
     tabs.refresh();
@@ -114,12 +143,22 @@ class PipelineTabsController extends GetxController {
   }
 
   Future<void> _loadTabFromDisk(PipelineFile tab) async {
-    final filePath = p.join(tab.folderPath, 'pipeline.json');
-    final file = File(filePath);
-    if (!await file.exists()) return;
+    final dir = Directory(tab.folderPath);
+    if (!await dir.exists()) return;
+    
+    File? jsonFile;
+    await for (final entity in dir.list()) {
+      final bName = p.basename(entity.path);
+      if (entity is File && bName.startsWith('pipeline') && bName.endsWith('.json')) {
+        jsonFile = entity;
+        break;
+      }
+    }
+    if (jsonFile == null) return;
 
     try {
-      final jsonStr = await file.readAsString();
+      if (!await jsonFile.exists()) return;
+      final jsonStr = await jsonFile.readAsString();
       final data = jsonDecode(jsonStr) as Map<String, dynamic>;
       final loaded = PipelineFile.fromJson(data);
       tab.nodes = loaded.nodes;
@@ -158,33 +197,51 @@ class PipelineTabsController extends GetxController {
     void _doClose() {
       tabs.removeWhere((t) => t.id == id);
       if (tabs.isEmpty) {
-        createNewTab();
+        activeTabId.value = null;
+        Get.find<PipelineController>().clearAll();
+        Get.find<HomeController>().goHome();
       } else if (activeTabId.value == id) {
         switchTab(tabs.last.id);
       }
     }
 
-    if (tab.hasUnsavedChanges) {
-      Get.dialog(
-        AlertDialog(
-          title: const Text('Close Pipeline?'),
-          content: Text('"${tab.name}" has unsaved changes. Close anyway?'),
-          actions: [
-            TextButton(
-              onPressed: () => Get.back(),
-              child: const Text('Cancel'),
-            ),
-            ElevatedButton(
-              style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
-              onPressed: () { Get.back(); _doClose(); },
-              child: const Text('Close', style: TextStyle(color: Colors.white)),
-            ),
-          ],
-        ),
-      );
-    } else {
-      _doClose();
-    }
+    showDialog(
+      context: Get.overlayContext!,
+      builder: (context) => AlertDialog(
+        title: const Text('Close Session'),
+        content: Text('Do you want to save "${tab.name}" for later? \n\nIf you discard it, this pipeline session will be permanently deleted and will not appear when you restart.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.red.shade600),
+            onPressed: () async {
+              Navigator.of(context).pop(); // close dialog
+              final dir = Directory(tab.folderPath);
+              if (await dir.exists()) {
+                await dir.delete(recursive: true); // physically delete so it won't show on restart
+              }
+              _doClose();
+            },
+            child: const Text('Discard', style: TextStyle(color: Colors.white)),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF6366F1)),
+            onPressed: () {
+              Navigator.of(context).pop();
+              // Auto-save logic already persists it, but we can enforce it:
+              if (activeTabId.value == id) {
+                _saveActiveTabToDisk();
+              }
+              _doClose();
+            },
+            child: const Text('Save & Close', style: TextStyle(color: Colors.white)),
+          ),
+        ],
+      ),
+    );
   }
 
   Future<void> renameTab(String id, String newName) async {
@@ -192,7 +249,7 @@ class PipelineTabsController extends GetxController {
     if (tab == null || tab.name == newName || newName.trim().isEmpty) return;
 
     final parentDir = Directory(tab.folderPath).parent;
-    final sanitizedName = newName.replaceAll(RegExp(r'[^a-zA-Z0-9_\s-]'), '_').trim();
+    final sanitizedName = newName.replaceAll(RegExp(r'\s+'), '_').replaceAll(RegExp(r'[^a-zA-Z0-9_\-]'), '_').trim();
     final newFolderPath = p.join(parentDir.path, sanitizedName);
     
     if (await Directory(newFolderPath).exists()) {
@@ -211,24 +268,32 @@ class PipelineTabsController extends GetxController {
     }
   }
 
-  /// Open an existing pipeline folder as a new tab.
-  Future<void> importPipeline(String folderPath) async {
-    final result = await _workspaceService.importPipelineFromFolder(folderPath);
-    if (result == null) {
+  /// Open an imported pipeline file as a new tab.
+  Future<void> importPipeline(String filePath) async {
+    // If it's a directory (from old history items), WorkspaceService will handle it
+    String? folderPathResult;
+    
+    if (await Directory(filePath).exists()) {
+      folderPathResult = await _workspaceService.importPipelineFromFolder(filePath);
+    } else {
+      folderPathResult = await _workspaceService.importPipelineFromExport(filePath);
+    }
+
+    if (folderPathResult == null) {
       Get.snackbar(
-        'No Pipeline Found',
-        'This folder does not contain a pipeline.json file.',
+        'Import Failed',
+        'Could not decode pipeline from this file or folder.',
         snackPosition: SnackPosition.BOTTOM,
       );
       return;
     }
     
-    final folderName = p.basename(folderPath);
+    final folderName = p.basename(folderPathResult);
     final id = const Uuid().v4();
     final newTab = PipelineFile(
       id: id,
       name: folderName,
-      folderPath: folderPath,
+      folderPath: folderPathResult,
     );
     tabs.add(newTab);
     switchTab(id);

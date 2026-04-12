@@ -1,4 +1,3 @@
-import 'dart:ui';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get/get.dart';
 import 'package:Ricochet/controllers/execution_controller.dart';
@@ -107,7 +106,7 @@ void main() {
   // validatePipeline
   // ---------------------------------------------------------------------------
   group('validatePipeline', () {
-    void _loadNodes(List<PipelineNode> nodes, [List<Connection>? conns]) {
+    void loadNodes(List<PipelineNode> nodes, [List<Connection>? conns]) {
       final file = PipelineFile(
         id: 'tab',
         name: 'T',
@@ -120,19 +119,19 @@ void main() {
     }
 
     test('empty canvas returns single error', () {
-      _loadNodes([]);
+      loadNodes([]);
       final errors = execCtrl.validatePipeline();
       expect(errors.length, 1);
       expect(errors.first, contains('empty'));
     });
 
     test('single docker node with command is valid', () {
-      _loadNodes([_dockerNode('n1')]);
+      loadNodes([_dockerNode('n1')]);
       expect(execCtrl.validatePipeline(), isEmpty);
     });
 
     test('docker node without command triggers error', () {
-      _loadNodes([_dockerNode('n1', command: '')]);
+      loadNodes([_dockerNode('n1', command: '')]);
       final errors = execCtrl.validatePipeline();
       expect(errors.any((e) => e.contains('Command field is empty')), isTrue);
     });
@@ -151,13 +150,13 @@ void main() {
           BlockParameter(key: 'image', label: 'Image', type: ParameterType.text, value: ''),
         ],
       );
-      _loadNodes([node]);
+      loadNodes([node]);
       final errors = execCtrl.validatePipeline();
       expect(errors.any((e) => e.contains('Docker Image field is empty')), isTrue);
     });
 
     test('two docker nodes not connected triggers disconnected-node error', () {
-      _loadNodes([_dockerNode('n1'), _dockerNode('n2')]);
+      loadNodes([_dockerNode('n1'), _dockerNode('n2')]);
       final errors = execCtrl.validatePipeline();
       expect(errors.any((e) => e.contains('not connected')), isTrue);
     });
@@ -165,14 +164,14 @@ void main() {
     test('two connected docker nodes with commands are valid', () {
       final n1 = _dockerNode('n1');
       final n2 = _dockerNode('n2');
-      _loadNodes([n1, n2], [
+      loadNodes([n1, n2], [
         Connection(id: 'c1', fromNodeId: 'n1', toNodeId: 'n2'),
       ]);
       expect(execCtrl.validatePipeline(), isEmpty);
     });
 
     test('non-docker node is not checked for command', () {
-      _loadNodes([_plainNode('x')]);
+      loadNodes([_plainNode('x')]);
       expect(execCtrl.validatePipeline(), isEmpty);
     });
   });

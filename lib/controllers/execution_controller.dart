@@ -96,7 +96,7 @@ class ExecutionController extends GetxController {
         // Check image still set
         final imageParam = node.parameters
             .firstWhereOrNull((p) => p.key == 'image');
-        final image = imageParam?.value?.toString().trim() ?? '';
+        final image = imageParam?.value?.toString().trim() ?? node.dockerImage ?? '';
         if (image.isEmpty) {
           errors.add('⚠️ Node "${node.title}": Docker Image field is empty.');
         }
@@ -187,15 +187,7 @@ class ExecutionController extends GetxController {
     showPanel.value = true; // Show panel when running
     final pipelineCtrl = Get.find<PipelineController>();
 
-    // Create a fresh run directory for every execution.  This prevents outputs
-    // from different runs sharing the same folder, which would leave stale
-    // output.txt files from a prior aborted run appearing as the current result.
     final runPipelineName = _resolvePipelineName(tabId);
-    final runDir = await WorkspaceService().startNewRun(
-      pipelineName: runPipelineName,
-    );
-    _addLog(tabId, '📂 Run workspace: ${runDir.path}');
-
     _addLog(tabId, '🚀 Pipeline execution started');
     _addLog(tabId, '📊 Found ${pipelineCtrl.nodes.length} blocks');
     _addLog(tabId, '🔗 Found ${pipelineCtrl.connections.length} connections');
@@ -233,6 +225,8 @@ class ExecutionController extends GetxController {
 
     // Map to store output file paths: nodeId -> filePath
     final nodeOutputs = <String, String>{};
+    // Map to store input file paths: nodeId -> list of filePaths
+    final nodeInputs = <String, List<String>>{};
 
     // 2. Execute nodes in order
     for (var node in executionOrder) {
@@ -262,30 +256,48 @@ class ExecutionController extends GetxController {
 
       // Prepare input files from upstream nodes
       final inputFiles = <String, String>{};
+      final upstreamOutputs = <String, String>{};
+      final upstreamInputs = <String, List<String>>{};
       final upstreamConnections =
           pipelineCtrl.connections.where((c) => c.toNodeId == node.id).toList();
 
       for (int connIdx = 0; connIdx < upstreamConnections.length; connIdx++) {
         final connection = upstreamConnections[connIdx];
         final upstreamNodeId = connection.fromNodeId;
+        final upstreamTitle = pipelineCtrl.nodes
+              .firstWhere((n) => n.id == upstreamNodeId)
+              .title;
+
         if (nodeOutputs.containsKey(upstreamNodeId)) {
           // Always include the upstreamNodeId so two Input nodes that both
           // connect to the same port don't collide and overwrite each other.
           final key = 'file_${connIdx + 1}_${upstreamNodeId.substring(0, 6)}';
           final filePath = nodeOutputs[upstreamNodeId]!;
           inputFiles[key] = filePath;
-          final upstreamTitle = pipelineCtrl.nodes
-              .firstWhere((n) => n.id == upstreamNodeId)
-              .title;
+          upstreamOutputs[upstreamTitle] = filePath;
+          
           _addLog(tabId, '   📥 Input ${connIdx + 1} from "$upstreamTitle"');
           _addLog(tabId, '      Host path : $filePath');
           final fileName = filePath.split(Platform.pathSeparator).last;
           _addLog(tabId, '      In-container: /inputs/$fileName  (\$INPUT_FILE_${connIdx + 1})');
         }
+        
+        if (nodeInputs.containsKey(upstreamNodeId)) {
+          upstreamInputs[upstreamTitle] = nodeInputs[upstreamNodeId]!;
+        }
       }
 
+      // Save this node's actual incoming files
+      nodeInputs[node.id] = inputFiles.values.toList();
+
       // Execute the node using the real pipeline controller logic
-      await pipelineCtrl.executeNode(node.id, inputFiles: inputFiles);
+      await pipelineCtrl.executeNode(
+        node.id, 
+        inputFiles: inputFiles,
+        upstreamOutputs: upstreamOutputs,
+        upstreamInputs: upstreamInputs,
+        pipelineName: runPipelineName,
+      );
       _heartbeat.cancel();
       _heartbeat = null;
       final totalElapsed = DateTime.now().difference(_nodeStart);

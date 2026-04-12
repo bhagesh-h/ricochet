@@ -75,6 +75,8 @@ class _PipelineBlockWidgetState extends State<PipelineBlockWidget>
               child: GestureDetector(
                 onTap: () {
                   controller.selectNode(isSelected ? null : widget.node.id);
+                  // Release focus from text fields (like ParameterSidebar) so Delete key works on Canvas
+                  FocusScope.of(context).unfocus();
                 },
                 // Right-click / long-press → context menu
                 onSecondaryTap: () => _showContextMenu(context, controller),

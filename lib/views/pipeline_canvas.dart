@@ -6,6 +6,7 @@ import 'package:Ricochet/models/pipeline_node.dart';
 import 'widgets/connection_painter.dart';
 import 'package:Ricochet/views/widgets/parameter_sidebar.dart';
 import '../controllers/pipeline_controller.dart';
+import '../controllers/execution_controller.dart';
 import 'widgets/pipeline_block_widget.dart';
 
 class PipelineCanvas extends StatefulWidget {
@@ -188,6 +189,39 @@ class _PipelineCanvasState extends State<PipelineCanvas>
                 bottom: 80,
                 child: _buildZoomControls(),
               ),
+
+              // Floating Delete Button (for "clicking delete")
+              Obx(() {
+                final hasSelectedNode = controller.selectedNode.value != null;
+                final hasSelectedConnection = controller.selectedConnectionId.value != null;
+                
+                if (!hasSelectedNode && !hasSelectedConnection) return const SizedBox.shrink();
+
+                final execCtrl = Get.find<ExecutionController>();
+                final bottomOffset = execCtrl.showPanel.value 
+                    ? execCtrl.panelHeight.value + 48.0
+                    : 48.0;
+
+                return AnimatedPositioned(
+                  duration: const Duration(milliseconds: 200),
+                  curve: Curves.easeOutCubic,
+                  left: 20,
+                  bottom: bottomOffset,
+                  child: FloatingActionButton(
+                    onPressed: () {
+                      if (hasSelectedNode) {
+                        controller.deleteNode(controller.selectedNode.value!);
+                      } else if (hasSelectedConnection) {
+                        controller.deleteConnection(controller.selectedConnectionId.value!);
+                      }
+                    },
+                    backgroundColor: const Color(0xFFEF4444),
+                    elevation: 4,
+                    child: const Icon(Icons.delete_rounded, color: Colors.white),
+                    tooltip: 'Delete Selected',
+                  ),
+                );
+              }),
 
               // Parameter sidebar
               Obx(() {
@@ -463,15 +497,16 @@ class _PipelineCanvasState extends State<PipelineCanvas>
     return Positioned(
       left: node.position.dx,
       top: node.position.dy,
-      child: _DraggableNode(
-        key: ValueKey(node
-            .id), // CRITICAL: Key ensures state preservation during rebuilds
-        node: node,
-        canvasKey: _canvasKey,
-        transformationController: _transformationController,
-        onConnectionDragStart: startConnectionDrag,
-        onConnectionDragUpdate: updateConnectionDrag,
-        onConnectionDragEnd: endConnectionDrag,
+      child: RepaintBoundary(
+        child: _DraggableNode(
+          key: ValueKey(node.id),
+          node: node,
+          canvasKey: _canvasKey,
+          transformationController: _transformationController,
+          onConnectionDragStart: startConnectionDrag,
+          onConnectionDragUpdate: updateConnectionDrag,
+          onConnectionDragEnd: endConnectionDrag,
+        ),
       ),
     );
   }

@@ -10,7 +10,7 @@ class _FakeProcess implements Process {
   final int _exitCode;
   final Stream<List<int>> _stdout;
   final Stream<List<int>> _stderr;
-  bool _sigtermIgnored;
+  final bool _sigtermIgnored;
 
   _FakeProcess({
     required int exitCode,
@@ -63,7 +63,7 @@ class _FakeProcess implements Process {
 /// to register an entire [FailureScenario] at once.
 class FakeProcessRunner implements ProcessRunner {
   final Map<String, _FakeResponse> _responses = {};
-  final List<_RecordedCall> recordedCalls = [];
+  final List<RecordedCall> recordedCalls = [];
 
   // ── Registration helpers ─────────────────────────────────────────────────
 
@@ -116,7 +116,7 @@ class FakeProcessRunner implements ProcessRunner {
     Duration? timeout,
   }) async {
     final response = _responseFor(executable, arguments);
-    recordedCalls.add(_RecordedCall(executable: executable, arguments: arguments));
+    recordedCalls.add(RecordedCall(executable: executable, arguments: arguments));
 
     if (response.hangDuration != null) {
       // Simulate a hanging process.
@@ -144,7 +144,7 @@ class FakeProcessRunner implements ProcessRunner {
     bool runInShell = false,
   }) async {
     final response = _responseFor(executable, arguments);
-    recordedCalls.add(_RecordedCall(executable: executable, arguments: arguments));
+    recordedCalls.add(RecordedCall(executable: executable, arguments: arguments));
 
     if (response.delay != null) {
       await Future<void>.delayed(response.delay!);
@@ -235,8 +235,8 @@ class _FakeResponse {
   });
 }
 
-class _RecordedCall {
+class RecordedCall {
   final String executable;
   final List<String> arguments;
-  const _RecordedCall({required this.executable, required this.arguments});
+  const RecordedCall({required this.executable, required this.arguments});
 }

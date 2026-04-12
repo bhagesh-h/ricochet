@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'package:archive/archive.dart';
 import 'package:path/path.dart' as p;
 import '../models/pipeline_node.dart';
@@ -9,7 +10,7 @@ class DockerComposeExportService {
 
   /// Generates the complete zip archive for the docker-compose export
   Future<List<int>> generateExportZip(
-      List<PipelineNode> sortedNodes, List<Connection> connections) async {
+      List<PipelineNode> sortedNodes, List<Connection> connections, String pipelineName) async {
     final archive = Archive();
     final timestamp =
         DateTime.now().toIso8601String().replaceAll(':', '-').split('.')[0];
@@ -20,18 +21,8 @@ class DockerComposeExportService {
     archive.addFile(ArchiveFile('$folderName/docker-compose.yml', composeYaml.length, composeYaml.codeUnits));
 
     // 2. Generate pipeline_config.env
-    final envContent = _generateEnvFile(sortedNodes);
+    final envContent = _generateEnvFile(sortedNodes, connections, pipelineName);
     archive.addFile(ArchiveFile('$folderName/pipeline_config.env', envContent.length, envContent.codeUnits));
-
-    // 3. Generate README.md
-    final readmeContent = _generateReadme(sortedNodes);
-    archive.addFile(ArchiveFile('$folderName/README.md', readmeContent.length, readmeContent.codeUnits));
-
-    // 4. Create empty directories (Archive handles this by ending with /)
-    // Add dummy files to ensure directories are created when extracted
-    archive.addFile(ArchiveFile('$folderName/raw_data/.gitkeep', 0, []));
-    archive.addFile(ArchiveFile('$folderName/results/.gitkeep', 0, []));
-
     // Encode to ZIP
     final zipEncoder = ZipEncoder();
     final zipData = zipEncoder.encode(archive);
@@ -204,7 +195,7 @@ class DockerComposeExportService {
     return buffer.toString();
   }
 
-  String _generateEnvFile(List<PipelineNode> sortedNodes) {
+  String _generateEnvFile(List<PipelineNode> sortedNodes, List<Connection> connections, String pipelineName) {
     final buffer = StringBuffer();
     buffer.writeln('# Ricochet Pipeline Configuration Environment Variables');
     buffer.writeln('# These overrides will be injected into your docker-compose services.');
@@ -238,6 +229,16 @@ class DockerComposeExportService {
       }
       buffer.writeln('');
     }
+
+    // Embed Ricochet state for reliable import
+    final stateMap = {
+      'name': pipelineName,
+      'nodes': sortedNodes.map((n) => n.toJson()).toList(),
+      'connections': connections.map((c) => c.toJson()).toList(),
+    };
+    final stateJson = jsonEncode(stateMap);
+    final stateB64 = base64Encode(utf8.encode(stateJson));
+    buffer.writeln('# RICOCHET_STATE: $stateB64');
 
     return buffer.toString();
   }

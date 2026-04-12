@@ -7,7 +7,10 @@ import 'package:path/path.dart' as p;
 import 'package:Ricochet/models/pipeline_node.dart';
 import '../../controllers/pipeline_controller.dart';
 import '../../controllers/docker_search_controller.dart';
+import '../../services/workspace_service.dart';
 import '../../models/docker_image.dart';
+import 'dart:io';
+import 'dart:convert';
 
 class ParameterSidebar extends StatefulWidget {
   final PipelineNode node;
@@ -121,7 +124,15 @@ class _ParameterSidebarState extends State<ParameterSidebar> {
                     controller.deleteNode(widget.node.id);
                     controller.selectNode(null);
                   },
-                  icon: const Icon(Icons.delete_outline, color: Color(0xFFEF4444), size: 20),
+                  icon: Container(
+                    padding: const EdgeInsets.all(6),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFEF4444).withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: const Icon(Icons.delete_outline_rounded,
+                        color: Color(0xFFEF4444), size: 20),
+                  ),
                   tooltip: 'Delete block',
                 ),
                 IconButton(
@@ -461,13 +472,51 @@ class _ParameterSidebarState extends State<ParameterSidebar> {
     );
   }
 
+  Future<List<String>> _getHistoricalFiles() async {
+    final workspaceService = WorkspaceService();
+    final recentPipelines = await workspaceService.listRecentPipelines();
+    final usedFiles = <String>{};
+
+    for (final p in recentPipelines) {
+      final jsonPath = p['folderPath']! + Platform.pathSeparator + 'pipeline.json';
+      final file = File(jsonPath);
+      if (await file.exists()) {
+        try {
+          final content = await file.readAsString();
+          final data = jsonDecode(content);
+          final nodes = data['nodes'] as List?;
+          if (nodes != null) {
+            for (final node in nodes) {
+              final params = node['parameters'] as List?;
+              if (params != null) {
+                for (final param in params) {
+                  if (param['type'] == 'multiFile' && param['value'] is List) {
+                    for (final v in param['value']) {
+                      final pathStr = v.toString();
+                      if (pathStr.isNotEmpty) usedFiles.add(pathStr);
+                    }
+                  } else if (param['key'] == 'file_path') {
+                    final pathStr = param['value']?.toString() ?? '';
+                    if (pathStr.isNotEmpty) usedFiles.add(pathStr);
+                  }
+                }
+              }
+            }
+          }
+        } catch (_) {}
+      }
+    }
+
+    final existingFiles = <String>[];
+    for (final p in usedFiles) {
+      if (await File(p).exists()) {
+        existingFiles.add(p);
+      }
+    }
+    return existingFiles;
+  }
+
   void _pickFileForSlot(BlockParameter param, int? slotIndex) {
-    final sampleFiles = [
-      'reads_1.fastq.gz', 'reads_2.fastq.gz',
-      'reference.fa', 'genome.fasta',
-      'alignments.bam', 'variants.vcf',
-      'transcriptome.gtf', 'results.csv',
-    ];
     final current = _filesFromParam(param);
 
     void applyFile(String path) {
@@ -542,17 +591,53 @@ class _ParameterSidebarState extends State<ParameterSidebar> {
               child: Align(
                 alignment: Alignment.centerLeft,
                 child: Text(
-                  'Sample Files',
+                  'Previously Used Files',
                   style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold,
                       color: Colors.grey[500], letterSpacing: 1.1),
                 ),
               ),
             ),
-            ...sampleFiles.map((file) => ListTile(
-              leading: const Icon(Icons.description_outlined, color: Color(0xFF94A3B8), size: 20),
-              title: Text(file, style: const TextStyle(color: Color(0xFF334155))),
-              onTap: () { applyFile(file); Get.back(); },
-            )),
+            FutureBuilder<List<String>>(
+              future: _getHistoricalFiles(),
+              builder: (context, snapshot) {
+                if (snapshot.connectionState == ConnectionState.waiting) {
+                  return const Padding(
+                    padding: EdgeInsets.all(20),
+                    child: Center(child: CircularProgressIndicator(strokeWidth: 2)),
+                  );
+                }
+                
+                final files = snapshot.data ?? [];
+                if (files.isEmpty) {
+                  return Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+                    child: Text('No historical files found.', style: TextStyle(color: Colors.grey[500], fontStyle: FontStyle.italic)),
+                  );
+                }
+
+                return ConstrainedBox(
+                  constraints: BoxConstraints(maxHeight: MediaQuery.of(context).size.height * 0.4),
+                  child: ListView.builder(
+                    shrinkWrap: true,
+                    physics: const BouncingScrollPhysics(),
+                    itemCount: files.length,
+                    itemBuilder: (context, index) {
+                      final filePath = files[index];
+                      String name = filePath.split('/').last;
+                      if (Platform.isWindows) {
+                         name = name.split('\\').last;
+                      }
+                      return ListTile(
+                        leading: const Icon(Icons.description_outlined, color: Color(0xFF94A3B8), size: 20),
+                        title: Text(name, style: const TextStyle(color: Color(0xFF334155))),
+                        subtitle: Text(filePath, style: const TextStyle(fontSize: 11, color: Colors.black45)),
+                        onTap: () { applyFile(filePath); Get.back(); },
+                      );
+                    },
+                  ),
+                );
+              },
+            ),
             const SizedBox(height: 20),
           ],
         ),
@@ -1010,6 +1095,53 @@ class _ParameterSidebarState extends State<ParameterSidebar> {
                 onChanged: (value) {
                   setState(() => widget.node.outputFileName = value.isEmpty ? null : value);
                 },
+              ),
+              const SizedBox(height: 16),
+              const Text('Explicit Output Directory (Optional)', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: Color(0xFF374151))),
+              const SizedBox(height: 8),
+              Row(
+                children: [
+                  Expanded(
+                    child: TextFormField(
+                      controller: TextEditingController(text: widget.node.outputDirectory ?? ''),
+                      readOnly: true,
+                      style: const TextStyle(fontSize: 12, fontFamily: 'monospace'),
+                      decoration: _inputDecoration('Stable path override...'),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  IconButton(
+                    onPressed: () async {
+                      try {
+                        String? selectedDirectory = await FilePicker.platform.getDirectoryPath();
+                        if (selectedDirectory != null) {
+                          setState(() => widget.node.outputDirectory = selectedDirectory);
+                        }
+                      } catch (e) {
+                         Get.snackbar('Error', 'Could not open folder picker: $e', snackPosition: SnackPosition.BOTTOM);
+                      }
+                    },
+                    icon: const Icon(Icons.folder_open_rounded, size: 20),
+                    style: IconButton.styleFrom(
+                      backgroundColor: Colors.white,
+                      foregroundColor: widget.node.primaryColor,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(6),
+                        side: BorderSide(color: const Color(0xFFD1D5DB)),
+                      ),
+                    ),
+                  ),
+                  if (widget.node.outputDirectory != null) ...[
+                    const SizedBox(width: 4),
+                    IconButton(
+                      onPressed: () => setState(() => widget.node.outputDirectory = null),
+                      icon: const Icon(Icons.clear_rounded, size: 16),
+                      padding: EdgeInsets.zero,
+                      constraints: const BoxConstraints(),
+                      color: Colors.red[300],
+                    ),
+                  ],
+                ],
               ),
               const SizedBox(height: 16),
               Row(
