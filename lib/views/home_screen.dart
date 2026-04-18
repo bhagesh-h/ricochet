@@ -4,6 +4,8 @@ import 'package:get/get.dart';
 import '../controllers/home_controller.dart';
 import '../models/pipeline_template.dart';
 import '../services/docker_service.dart';
+import 'widgets/ricochet_logo.dart';
+import 'widgets/about_dialog.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // HomeScreen — root widget
@@ -53,46 +55,7 @@ class _TopBar extends StatelessWidget {
       child: Row(
         children: [
           // Brand mark
-          Container(
-            width: 28,
-            height: 28,
-            decoration: BoxDecoration(
-              gradient: const LinearGradient(
-                colors: [Color(0xFF6366F1), Color(0xFF8B5CF6)],
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-              ),
-              borderRadius: BorderRadius.circular(7),
-            ),
-            child: const Icon(Icons.account_tree_rounded,
-                color: Colors.white, size: 16),
-          ),
-          const SizedBox(width: 10),
-          const Text(
-            'Ricochet',
-            style: TextStyle(
-              fontSize: 16,
-              fontWeight: FontWeight.w700,
-              color: Color(0xFF0F172A),
-              letterSpacing: -0.3,
-            ),
-          ),
-          const SizedBox(width: 8),
-          Container(
-            padding:
-                const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
-            decoration: BoxDecoration(
-              color: const Color(0xFFEFF6FF),
-              borderRadius: BorderRadius.circular(4),
-            ),
-            child: const Text(
-              'v1.0',
-              style: TextStyle(
-                  fontSize: 10,
-                  color: Color(0xFF3B82F6),
-                  fontWeight: FontWeight.w600),
-            ),
-          ),
+          const RicochetLogo(height: 20),
           const Spacer(),
           // Keyboard shortcut hint
           _TopBarButton(
@@ -102,9 +65,9 @@ class _TopBar extends StatelessWidget {
           ),
           const SizedBox(width: 4),
           _TopBarButton(
-            icon: Icons.help_outline_rounded,
-            tooltip: 'Documentation',
-            onTap: () {},
+            icon: Icons.info_outline_rounded,
+            tooltip: 'About Ricochet',
+            onTap: () => Get.dialog(const ModernAboutDialog()),
           ),
         ],
       ),

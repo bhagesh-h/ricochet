@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="assets/logo-nobg.png" alt="Ricochet Logo" width="180"/>
+  <img src="assets/ricochet_logo.svg" alt="Ricochet Logo" width="300"/>
 </p>
 
 # Ricochet
