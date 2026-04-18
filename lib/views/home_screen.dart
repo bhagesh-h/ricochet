@@ -574,82 +574,101 @@ class _BlankCardState extends State<_BlankCard> {
       child: GestureDetector(
         onTap: widget.onTap,
         child: AnimatedContainer(
-          duration: const Duration(milliseconds: 180),
-          height: 110,
+          duration: const Duration(milliseconds: 175),
+          width: 218,
+          height: 150,
+          clipBehavior: Clip.hardEdge,
+          transform: _hovering
+              ? (Matrix4.identity()..translate(0.0, -3.0))
+              : Matrix4.identity(),
           decoration: BoxDecoration(
             gradient: const LinearGradient(
               colors: [Color(0xFF6366F1), Color(0xFF8B5CF6)],
-              begin: Alignment.centerLeft,
-              end: Alignment.centerRight,
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
             ),
             borderRadius: BorderRadius.circular(14),
             boxShadow: [
               BoxShadow(
                 color: const Color(0xFF6366F1)
-                    .withOpacity(_hovering ? 0.45 : 0.25),
-                blurRadius: _hovering ? 24 : 14,
-                offset: Offset(0, _hovering ? 8 : 4),
+                    .withOpacity(_hovering ? 0.4 : 0.18),
+                blurRadius: _hovering ? 20 : 10,
+                offset: Offset(0, _hovering ? 8 : 3),
               ),
             ],
           ),
-          transform: _hovering
-              ? (Matrix4.identity()..scale(1.005))
-              : Matrix4.identity(),
           child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 20),
-            child: Row(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Container(
-                  width: 48,
-                  height: 48,
-                  decoration: BoxDecoration(
-                    color: Colors.white.withOpacity(0.2),
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: const Icon(Icons.add_rounded,
-                      color: Colors.white, size: 28),
-                ),
-                const SizedBox(width: 20),
-                const Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  crossAxisAlignment: CrossAxisAlignment.start,
+                // Top row
+                Row(
                   children: [
-                    Text(
-                      'Blank Pipeline',
-                      style: TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.w700,
-                        color: Colors.white,
-                        letterSpacing: -0.3,
+                    const Icon(Icons.add_rounded, color: Colors.white, size: 22),
+                    const Spacer(),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withOpacity(0.22),
+                        borderRadius: BorderRadius.circular(20),
                       ),
-                    ),
-                    SizedBox(height: 4),
-                    Text(
-                      'Start from scratch — drag tools from the sidebar',
-                      style: TextStyle(
-                          fontSize: 13, color: Colors.white70),
+                      child: const Text(
+                        'Start Fresh',
+                        style: TextStyle(
+                            fontSize: 9.5,
+                            color: Colors.white,
+                            fontWeight: FontWeight.w600),
+                      ),
                     ),
                   ],
                 ),
-                const Spacer(),
-                AnimatedOpacity(
-                  opacity: _hovering ? 1.0 : 0.0,
-                  duration: const Duration(milliseconds: 150),
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 16, vertical: 8),
-                    decoration: BoxDecoration(
-                      color: Colors.white.withOpacity(0.2),
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: const Text(
-                      'Create →',
+                // Bottom group
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Text(
+                      'Blank Pipeline',
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
                       style: TextStyle(
-                          color: Colors.white,
-                          fontWeight: FontWeight.w600,
-                          fontSize: 13),
+                        fontSize: 14.5,
+                        fontWeight: FontWeight.w700,
+                        color: Colors.white,
+                        letterSpacing: -0.2,
+                      ),
                     ),
-                  ),
+                    const SizedBox(height: 3),
+                    Text(
+                      'Any workload  ·  Custom tools',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                          fontSize: 11,
+                          color: Colors.white.withOpacity(0.75)),
+                    ),
+                    const SizedBox(height: 6),
+                    SingleChildScrollView(
+                      scrollDirection: Axis.horizontal,
+                      child: Row(
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: Colors.white.withOpacity(0.18),
+                              borderRadius: BorderRadius.circular(4),
+                            ),
+                            child: const Text(
+                              'drag-&-drop',
+                              style: TextStyle(fontSize: 9.5, color: Colors.white),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
                 ),
               ],
             ),

@@ -2,6 +2,7 @@ import 'package:get/get.dart';
 import '../services/workspace_service.dart';
 import 'pipeline_tabs_controller.dart';
 import '../models/pipeline_template.dart';
+import '../views/widgets/about_dialog.dart';
 
 enum AppView { home, editor }
 
@@ -16,6 +17,12 @@ class HomeController extends GetxController {
   void onInit() {
     super.onInit();
     loadRecent();
+  }
+
+  @override
+  void onReady() {
+    super.onReady();
+    Get.dialog(const ModernAboutDialog(), barrierDismissible: false);
   }
 
   Future<void> loadRecent() async {
