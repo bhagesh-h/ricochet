@@ -268,7 +268,7 @@ class PipelineTabsController extends GetxController {
     }
   }
 
-  /// Open an imported pipeline file as a new tab.
+  /// Open an imported pipeline file as a new tab, or switch to it if already open.
   Future<void> importPipeline(String filePath) async {
     // If it's a directory (from old history items), WorkspaceService will handle it
     String? folderPathResult;
@@ -285,6 +285,13 @@ class PipelineTabsController extends GetxController {
         'Could not decode pipeline from this file or folder.',
         snackPosition: SnackPosition.BOTTOM,
       );
+      return;
+    }
+    
+    // Prevent duplicate tabs pointing to the same pipeline folder
+    final existingTab = tabs.firstWhereOrNull((t) => t.folderPath == folderPathResult);
+    if (existingTab != null) {
+      switchTab(existingTab.id);
       return;
     }
     
