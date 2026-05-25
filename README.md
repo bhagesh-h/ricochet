@@ -6,7 +6,7 @@
 
 **A visual, Docker-powered bioinformatics pipeline builder for your desktop.**
 
-Ricochet lets you build complex bioinformatics analysis pipelines by dragging and dropping Docker containers onto a visual canvas — no YAML, no Bash scripts, no server required. Connect tools like FastQC, STAR, BWA, GATK, and Samtools like building blocks, configure them through a clean GUI, and hit **Execute**. Ricochet handles the rest.
+Ricochet lets you build complex bioinformatics analysis pipelines by dragging and dropping Docker containers onto a visual canvas: no YAML, no Bash scripts, no server required. Connect tools like FastQC, STAR, BWA, GATK, and Samtools like building blocks, configure them through a clean GUI, and hit **Execute**. Ricochet handles the rest.
 
 > **"If you can use Figma, you can use Ricochet. If you can run Docker, you can run Ricochet."**
 
@@ -17,17 +17,17 @@ Ricochet lets you build complex bioinformatics analysis pipelines by dragging an
 - **Infinite canvas** with smooth pan and zoom
 - **Drag-and-drop** nodes from the sidebar or add them directly on the canvas
 - **Bezier curve connections** between node ports to represent data flow
-- **Cycle detection** — connections that create loops are highlighted and blocked at execution time
+- **Cycle detection**: connections that create loops are highlighted and blocked at execution time
 - **Canvas reset** button to clear the workspace and start fresh
 
 ### Multi-Tab Pipeline Editor (Chrome-style)
 
 - Work on multiple pipelines simultaneously in separate tabs
 - Each tab is **independently named, saved, and restored** across sessions
-- **Auto-save** — changes are debounced and written to disk (as `pipeline.json`) 2 seconds after each edit
-- **Unsaved-changes indicator** (`•`) shown on each tab — prompts before closing
-- **Tab renaming** — double-click to rename; folder on disk is renamed accordingly
-- **Session restore** — last open pipelines are automatically reloaded on app launch
+- **Auto-save**: changes are debounced and written to disk (as `pipeline.json`) 2 seconds after each edit
+- **Unsaved-changes indicator** (`•`) shown on each tab: prompts before closing
+- **Tab renaming**: double-click to rename; folder on disk is renamed accordingly
+- **Session restore**: last open pipelines are automatically reloaded on app launch
 - Open and **Import** an existing pipeline folder from disk via the toolbar
 
 ### Built-in Bioinformatics Tool Blocks
@@ -41,18 +41,18 @@ Drag pre-configured nodes from the sidebar with tool-specific defaults:
 | **BWA Aligner** | `staphb/bwa` | Sequence alignment against reference (mem, aln, bwasw) |
 | **STAR Aligner** | `staphb/star` | Spliced alignment to reference genome |
 | **Samtools** | `staphb/samtools` | Process SAM/BAM alignments (view, sort, index, flagstat, stats) |
-| **Input Data** | *(none)* | File picker node — mounts selected file into downstream containers |
+| **Input Data** | *(none)* | File picker node: mounts selected file into downstream containers |
 | **Output Results** | *(none)* | Receives the final processed data at the end of a pipeline |
 
 ### Docker Hub Integration
 
-- **Live search** the Docker Hub registry directly from the sidebar — no browser required
+- **Live search** the Docker Hub registry directly from the sidebar: no browser required
 - Search results show stars, pulls, and whether the image is official
 - Click any result to drop a fully configured node onto the canvas
-- **Smart default tag** — Ricochet automatically fetches the most recent stable tag for each image from Docker Hub (e.g. `0.23.4` instead of `latest`)
+- **Smart default tag**: Ricochet automatically fetches the most recent stable tag for each image from Docker Hub (e.g. `0.23.4` instead of `latest`)
 - Tag list is sorted by recency using a deterministic algorithm that ranks version-like tags (e.g. `v1.2.3`) above others
 - Tag results are **cached with LRU eviction and TTL** to avoid redundant API calls
-- In-flight requests are **deduplicated** so rapid searches don't cause repeated network hits
+- In-flight requests are **deduplicated** so rapid searches do not cause repeated network hits
 
 ### Node Configuration Panel
 
@@ -68,32 +68,32 @@ Each node exposes fully editable parameters:
 - When a Docker node is dropped onto the canvas, Ricochet immediately checks if the image exists locally
 - If not found, it **automatically pulls the image** in the background with a **live layer-by-layer progress bar**
 - Pulling and extraction progress is tracked per-layer and displayed inside the node card
-- Images already cached locally are recognised instantly (`Image ready`)
+- Images already cached locally are recognized instantly (`Image ready`)
 - Image pulls can be **cancelled** at any time
 
 ### Pipeline Execution Engine
 
 - **Topological sort** (Kahn's algorithm) determines the correct execution order for all connected nodes
-- **Data flow** — output from each node is automatically mounted as `/inputs/<filename>` in the next container; `$INPUT_FILE` environment variable is injected for convenience
+- **Data flow**: output from each node is automatically mounted as `/inputs/<filename>` in the next container; `$INPUT_FILE` environment variable is injected for convenience
 - Outputs are written to `/outputs/` inside each container, mapped to a **timestamped workspace folder** on the host
-- **Heartbeat logging** — every 10 seconds Ricochet logs the elapsed time of long-running containers so you know they're still alive
-- **Pre-execution validation** — checks for empty canvas, missing commands, empty Docker image fields, and disconnected nodes before running
+- **Heartbeat logging**: every 10 seconds Ricochet logs the elapsed time of long-running containers so you know they are still alive
+- **Pre-execution validation**: checks for empty canvas, missing commands, empty Docker image fields, and disconnected nodes before running
 - Pipeline stops immediately on the first failed node with detailed error output
-- **Stop button** — gracefully kills all running containers mid-execution
+- **Stop button**: gracefully kills all running containers mid-execution
 - **Run Anyway** option to override validation warnings when needed
 
 ### Execution Console (Terminal Panel)
 
 - Slide-up terminal panel accessible from the status bar at the bottom
-- **Per-tab logs** — each pipeline tab has its own isolated execution log
+- **Per-tab logs**: each pipeline tab has its own isolated execution log
 - Structured log messages: `[STDOUT]`, `[STDERR]`, `[SYSTEM]`, `[ERROR]`
 - Logs show input/output file paths, files produced (with sizes), and elapsed time per node
-- **Resizable** — drag to expand or compact the panel (clamped between 100px – 600px)
+- **Resizable**: drag to expand or compact the panel (clamped between 100px and 600px)
 - Clear logs button to reset the console for a fresh run
 
 ### Undo / Redo
 
-- Full **undo/redo history per tab** — each tab maintains its own independent state stack
+- Full **undo/redo history per tab**: each tab maintains its own independent state stack
 - History is preserved when switching between tabs
 - Undo/redo operates on canvas nodes and connections
 
@@ -102,34 +102,52 @@ Each node exposes fully editable parameters:
 Export your entire pipeline as a **production-ready Docker Compose project**:
 
 - Generates a `.zip` archive containing:
-  - `docker-compose.yml` — all services with correct `depends_on: service_completed_successfully` ordering
-  - `pipeline_config.env` — all node parameters as overridable environment variables
-  - `README.md` — auto-generated documentation with run instructions, lifecycle cheat-sheet, and common fixes
+  - `docker-compose.yml`: all services with correct `depends_on: service_completed_successfully` ordering
+  - `pipeline_config.env`: all node parameters as overridable environment variables
+  - `README.md`: auto-generated documentation with run instructions, lifecycle cheat-sheet, and common fixes
   - `raw_data/` and `results/` placeholder directories
 - Service names are auto-slugified from node titles with collision avoidance
-- **Platform-aware** — on Apple Silicon, `platform: linux/amd64` is injected automatically; on ARM64 Linux, `platform: linux/arm64` is used instead
+- **Platform-aware**: on Apple Silicon, `platform: linux/amd64` is injected automatically; on ARM64 Linux, `platform: linux/arm64` is used instead
 - Supports **aggregator nodes** that also start a local HTTP server (`python3 -m http.server 8080`) for viewing results in the browser
 
 ### Docker Status Banner
 
 - Persistent banner shown at the top of the UI when Docker is not running or not installed
-- **Per-OS** install and launch instructions (macOS, Windows, Linux — see below)
-- **Apple Silicon notice** — informs users running on macOS ARM that x86-only images will use emulation
+- **Per-OS** install and launch instructions (macOS, Windows, Linux)
+- **Apple Silicon notice**: informs users running on macOS ARM that x86-only images will use emulation
 - Execute button is automatically **disabled** when Docker is not available; tooltip explains why
 - **Retry** button to re-check Docker status without restarting the app
+
+### Custom Window Title Bar and Window Controls
+
+- **Frameless Window**: Hides the default operating system title bar and Flutter branding to deliver a unified desktop experience.
+- **Responsive Controls**: Fully customized Minimize, Maximize/Restore, and Close buttons with responsive hover effects. The close button transitions to standard Windows-native red on hover.
+- **Universal Dragging**: Integrated `DragToMoveArea` regions across the Home top bar and the Editor Multi-Tab header, allowing the entire window to be moved by grabbing any header area.
+- **macOS Layout Compliance**: Automatically scales the left-side margin to `80px` on macOS to gracefully clear the native Apple traffic light controls, while hiding redundant custom buttons.
+
+### Minimalist Custom App Icon
+
+- **Premium Styling**: Updated the taskbar and application executable icons with a minimalist, high-contrast, bold purple capital letter 'R' centered on a flat solid white background.
+- **Windows Integration**: Packaged natively as a high-DPI `256x256` Device Independent Bitmap (DIB) `.ico` file to ensure crisp rendering at all desktop scale levels.
+
+### Automated GitHub build and Release Pipeline
+
+- **Continuous Compilation**: Configured a complete GitHub Actions workflow ([build_binaries.yml](.github/workflows/build_binaries.yml)) that compiles the application in parallel across Windows, macOS, and Linux runners on branch push.
+- **Zip Compression**: Packs build directories natively to maintain Unix execution permissions and simplify distribution.
+- **Release Automation**: Downstream actions automatically create pre-releases tagged as `v1.0.0-build.<run_number>` and publish compiled target zip files directly to the Releases page for instant direct downloads.
 
 ### Workspace & Persistence
 
 - Each pipeline is saved as a `pipeline.json` file inside its own named folder in the Ricochet workspace
-- Each pipeline run gets a **fresh timestamped run directory** — no stale outputs from prior runs
+- Each pipeline run gets a **fresh timestamped run directory**: no stale outputs from prior runs
 - Node output folders are named `<nodeTitle>_<nodeId>/` for easy identification
 - Input file path is passed to downstream containers via volume mounts at `/inputs/<filename>`
-- **Open Recent** — toolbar button shows a dialog listing all saved pipelines with their folder paths
+- **Open Recent**: toolbar button shows a dialog listing all saved pipelines with their folder paths
 - Import any pipeline folder from anywhere on disk via the **Import** button
 
 ### Duplicate Nodes
 
-Right-click or menu option to **duplicate** any node — creates a deep copy with a new UUID offset by 30 px. Docker image pull is automatically triggered for the duplicate if it is a Docker node.
+Right-click or menu option to **duplicate** any node: creates a deep copy with a new UUID offset by 30 px. Docker image pull is automatically triggered for the duplicate if it is a Docker node.
 
 ### Node Status Indicators
 
@@ -150,6 +168,7 @@ Right-click or menu option to **duplicate** any node — creates a deep copy wit
 ┌─────────────────────────────────────────────────────────────┐
 │                     Ricochet Desktop App                    │
 │                      (Flutter / Dart)                       │
+│                      (Frameless Window)                     │
 ├───────────────┬─────────────────┬───────────────────────────┤
 │  PipelineCanvas│   ToolSidebar  │     ExecutionPanel        │
 │  (Nodes +      │  (Docker Hub   │  (Logs, Stop, Resize)     │
@@ -158,6 +177,7 @@ Right-click or menu option to **duplicate** any node — creates a deep copy wit
 │                      Controller Layer                       │
 │  PipelineController │ ExecutionController │ DockerController│
 │  PipelineTabsCtrl   │ DockerSearchController                │
+│  HomeController     │ SystemStatsController                 │
 ├─────────────────────────────────────────────────────────────┤
 │                       Service Layer                         │
 │  DockerService (CLI) │ WorkspaceService │ ComposeExportSvc  │
@@ -165,22 +185,22 @@ Right-click or menu option to **duplicate** any node — creates a deep copy wit
                               ↓
            ┌────────────────────────────────┐
            │      Docker Engine (Local)     │
-           │  Container 1 │ Container 2 │…  │
+           │  Container 1 │ Container 2 │...  │
            └────────────────────────────────┘
                               ↓
            ┌────────────────────────────────────────────┐
            │  Workspace directory (OS Documents folder) │
            │  run_2025-06-01T10-30-15/                  │
            │  ├── FastQC_<id>/output.txt                │
-           │  └── Trimmomatic_<id>/…                    │
-           └────────────────────────────────────────────┘
+           │  └── Trimmomatic_<id>/...                    │
+           └────────────────────────────────────────────┐
 ```
 
 ### Tech Stack
 
 | Layer | Technology |
 |-------|-----------|
-| UI Framework | Flutter 3.x / Dart 3.x |
+| UI Framework | Flutter 3.x / Dart 3.x / window_manager |
 | State Management | GetX 4.x |
 | Docker Integration | Docker CLI via Dart `Process` API |
 | HTTP (Docker Hub) | `http`, `dio` |
@@ -198,9 +218,9 @@ See [`requirements.txt`](requirements.txt) for the full breakdown. The short ver
 
 | Platform | Flutter SDK | Docker |
 |----------|------------|--------|
-| **macOS** | ≥ 3.22 | Docker Desktop ≥ 4.x ([download](https://docs.docker.com/desktop/install/mac-install/)) |
-| **Windows 10/11** | ≥ 3.22 | Docker Desktop ≥ 4.x + WSL2 backend ([download](https://docs.docker.com/desktop/install/windows-install/)) |
-| **Linux** | ≥ 3.22 | Docker Engine **or** Docker Desktop for Linux ([docs](https://docs.docker.com/desktop/install/linux-install/)) |
+| **macOS** | >= 3.22 | Docker Desktop >= 4.x ([download](https://docs.docker.com/desktop/install/mac-install/)) |
+| **Windows 10/11** | >= 3.22 | Docker Desktop >= 4.x + WSL2 backend ([download](https://docs.docker.com/desktop/install/windows-install/)) |
+| **Linux** | >= 3.22 | Docker Engine **or** Docker Desktop for Linux ([docs](https://docs.docker.com/desktop/install/linux-install/)) |
 
 ### Platform-Specific Docker Setup
 
@@ -211,7 +231,7 @@ See [`requirements.txt`](requirements.txt) for the full breakdown. The short ver
 open https://docs.docker.com/desktop/install/mac-install/
 
 # Apple Silicon users: enable Rosetta emulation in Docker Desktop
-# → Settings → General → "Use Rosetta for x86/amd64 emulation"
+# Settings -> General -> "Use Rosetta for x86/amd64 emulation"
 ```
 
 #### Windows 10 / 11
@@ -221,7 +241,7 @@ open https://docs.docker.com/desktop/install/mac-install/
 wsl --install
 
 # 2. Download and install Docker Desktop, choosing the WSL2 backend
-# → https://desktop.docker.com/win/main/amd64/Docker%20Desktop%20Installer.exe
+# https://desktop.docker.com/win/main/amd64/Docker%20Desktop%20Installer.exe
 
 # 3. After install, Docker Desktop starts automatically
 docker run hello-world   # verify it works
@@ -230,7 +250,7 @@ docker run hello-world   # verify it works
 #### Linux (Ubuntu / Debian)
 
 ```bash
-# Option A — Docker Engine (lighter, CLI only)
+# Option A: Docker Engine (lighter, CLI only)
 sudo apt-get update
 sudo apt-get install -y docker.io
 
@@ -241,7 +261,7 @@ newgrp docker              # apply without logging out
 # Enable the daemon to start on boot
 sudo systemctl enable --now docker
 
-# Option B — Docker Desktop for Linux (GUI + tray icon)
+# Option B: Docker Desktop for Linux (GUI + tray icon)
 # Follow the official guide: https://docs.docker.com/desktop/install/linux-install/
 
 # Verify
@@ -287,14 +307,14 @@ flutter build linux       # ELF binary
 
 ## Usage Walkthrough
 
-1. **Open Ricochet** — a blank canvas tab is created automatically
+1. **Open Ricochet**: a blank canvas tab is created automatically
 2. **Search Docker Hub** in the sidebar search bar, or drag a built-in block (FastQC, BWA, etc.) onto the canvas
-3. **Configure each node** — click a node to open its parameter panel; set the command, image tag, volumes, etc.
-4. **Connect nodes** — drag from an output port on one node to an input port on another to establish data flow
-5. **Add an Input node** and select your FASTQ/FASTA/BAM file — this mounts the file into the first tool container at `/inputs/<filename>` (available inside the container as `$INPUT_FILE`)
-6. **Execute** — click the green **Execute** button; the terminal panel slides up showing live logs
-7. **View results** — output files are written to the workspace folder shown in the terminal log
-8. **Export** — click **Export Docker** to download a ready-to-run `docker-compose.yml` project
+3. **Configure each node**: click a node to open its parameter panel; set the command, image tag, volumes, etc.
+4. **Connect nodes**: drag from an output port on one node to an input port on another to establish data flow
+5. **Add an Input node** and select your FASTQ/FASTA/BAM file: this mounts the file into the first tool container at `/inputs/<filename>` (available inside the container as `$INPUT_FILE`)
+6. **Execute**: click the green **Execute** button; the terminal panel slides up showing live logs
+7. **View results**: output files are written to the workspace folder shown in the terminal log
+8. **Export**: click **Export Docker** to download a ready-to-run `docker-compose.yml` project
 
 ## Workspace Location
 
@@ -318,19 +338,19 @@ Ricochet/
 ├── Runs/
 │   ├── run_2025-06-01T10-30-15/
 │   │   ├── FastQC_<id>/output.txt
-│   │   └── Trimmomatic_<id>/trimmed.fastq.gz
+│   │   └── Trimmomatic_<id>/...
 │   └── run_2025-06-01T11-45-02/
 └── exports/
     └── Ricochet-export_2025-06-01T12-00-00.zip
 ```
 
-## ⚠️ Platform Notes & Known Limitations
+## Platform Notes & Known Limitations
 
 ### All Platforms
 
-- Ricochet only supports **Directed Acyclic Graphs (DAGs)** — circular connections are blocked at execution time
-- Nodes must be **connected** in a multi-node pipeline — disconnected nodes are flagged before execution
-- Input files must exist on disk and be readable — Ricochet warns if biological sequence files appear suspiciously small (likely a failed download)
+- Ricochet only supports **Directed Acyclic Graphs (DAGs)**: circular connections are blocked at execution time
+- Nodes must be **connected** in a multi-node pipeline: disconnected nodes are flagged before execution
+- Input files must exist on disk and be readable: Ricochet warns if biological sequence files appear suspiciously small (likely a failed download)
 
 ### macOS
 
@@ -340,7 +360,7 @@ Ricochet/
 ### Windows
 
 - Docker **must** use the **WSL2 backend** (not Hyper-V). The WSL2 backend is required for reliable volume mounts and process management.
-- Windows host paths in volume mounts are automatically translated to the WSL-compatible format (e.g. `C:\Users\me\data.fastq` → `/c/Users/me/data.fastq`) — you do not need to do this manually.
+- Windows host paths in volume mounts are automatically translated to the WSL-compatible format (e.g. `C:\Users\me\data.fastq` -> `/c/Users/me/data.fastq`): you do not need to do this manually.
 - The Docker executable is searched at `C:\Program Files\Docker\Docker\resources\bin\docker.exe` before falling back to `docker.exe` on `PATH`.
 - Open output directory uses `explorer.exe` to open the workspace folder.
 
@@ -349,9 +369,9 @@ Ricochet/
 - **Docker group membership is required.** If you installed Docker Engine (not Desktop), run `sudo usermod -aG docker $USER` and log out/in. Without this, the app cannot communicate with the Docker daemon.
 - **Socket auto-detection:** Ricochet checks for the Docker Desktop user-scoped socket (`~/.docker/run/docker.sock`) first, then falls back to the system socket (`/var/run/docker.sock`). If neither exists, it relies on the `docker` binary's own context discovery.
 - **ARM64 Linux** (Raspberry Pi 4/5, AWS Graviton, etc.): Ricochet automatically requests `--platform linux/arm64` so native arm64 images are preferred, avoiding emulation.
-- **x86_64 Linux** (most desktops/servers): no platform flag needed — native amd64 containers run without emulation.
+- **x86_64 Linux** (most desktops/servers): no platform flag needed: native amd64 containers run without emulation.
 - Open output directory uses `xdg-open` to open the workspace folder in the default file manager.
-- GTK 3 development libraries are required to build the app — see [`requirements.txt`](requirements.txt).
+- GTK 3 development libraries are required to build the app: see [`requirements.txt`](requirements.txt).
 
 ## License
 

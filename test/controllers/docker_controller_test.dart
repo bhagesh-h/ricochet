@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get/get.dart';
 import 'package:Ricochet/controllers/docker_controller.dart';
@@ -64,7 +65,7 @@ void main() {
     test('settles to stopped when installed but daemon is not running', () async {
       _stubDockerInstalled(fakeRunner);
       fakeRunner.addResponse(
-        executable: '/usr/local/bin/docker',
+        executable: _getPlatformDockerPath(),
         arguments: ['info'],
         exitCode: 1,
         stderr: 'Cannot connect to the Docker daemon',
@@ -134,7 +135,7 @@ void main() {
     test('clears dockerInfo when Docker is not running', () async {
       _stubDockerInstalled(fakeRunner);
       fakeRunner.addResponse(
-        executable: '/usr/local/bin/docker',
+        executable: _getPlatformDockerPath(),
         arguments: ['info'],
         exitCode: 1,
         stderr: 'Cannot connect to the Docker daemon',
@@ -193,7 +194,7 @@ void main() {
 void _stubDockerReady(FakeProcessRunner fake) {
   _stubDockerInstalled(fake);
   fake.addResponse(
-    executable: '/usr/local/bin/docker',
+    executable: _getPlatformDockerPath(),
     arguments: ['info'],
     exitCode: 0,
     stdout: [
@@ -209,10 +210,10 @@ void _stubDockerReady(FakeProcessRunner fake) {
   );
 }
 
-/// Stub Docker installed at the first macOS path.
+/// Stub Docker installed at the platform-specific primary path.
 void _stubDockerInstalled(FakeProcessRunner fake) {
   fake.addResponse(
-    executable: '/usr/local/bin/docker',
+    executable: _getPlatformDockerPath(),
     arguments: ['--version'],
     exitCode: 0,
     stdout: 'Docker version 24.0.6, build ed223bc',
@@ -223,5 +224,21 @@ void _stubDockerInstalled(FakeProcessRunner fake) {
 void _stubDockerNotInstalled(FakeProcessRunner fake) {
   fake.addResponse(executable: '/usr/local/bin/docker', arguments: ['--version'], exitCode: 127);
   fake.addResponse(executable: '/opt/homebrew/bin/docker', arguments: ['--version'], exitCode: 127);
+  fake.addResponse(executable: r'C:\Program Files\Docker\Docker\resources\bin\docker.exe', arguments: ['--version'], exitCode: 127);
+  fake.addResponse(executable: '/usr/bin/docker', arguments: ['--version'], exitCode: 127);
+  fake.addResponse(executable: '/snap/bin/docker', arguments: ['--version'], exitCode: 127);
   fake.addResponse(executable: 'docker', arguments: ['--version'], exitCode: 127);
+  fake.addResponse(executable: 'docker.exe', arguments: ['--version'], exitCode: 127);
+}
+
+/// Get the expected primary Docker executable path for the current host OS.
+String _getPlatformDockerPath() {
+  if (Platform.isMacOS) {
+    return '/usr/local/bin/docker';
+  } else if (Platform.isWindows) {
+    return r'C:\Program Files\Docker\Docker\resources\bin\docker.exe';
+  } else if (Platform.isLinux) {
+    return '/usr/bin/docker';
+  }
+  return 'docker';
 }

@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:Ricochet/models/docker_info.dart';
 import 'package:Ricochet/models/docker_pull_progress.dart';
@@ -20,7 +21,7 @@ void main() {
   group('isDockerInstalled', () {
     test('returns true when docker --version exits 0 on first path', () async {
       fakeRunner.addResponse(
-        executable: '/usr/local/bin/docker',
+        executable: _getPlatformDockerPath(),
         arguments: ['--version'],
         exitCode: 0,
         stdout: 'Docker version 24.0.6, build ed223bc',
@@ -30,10 +31,20 @@ void main() {
     });
 
     test('returns true when found on fallback PATH entry', () async {
-      // All specific paths fail; fallback "docker" succeeds.
-      fakeRunner.addResponse(executable: '/usr/local/bin/docker', arguments: ['--version'], exitCode: 127);
-      fakeRunner.addResponse(executable: '/opt/homebrew/bin/docker', arguments: ['--version'], exitCode: 127);
-      fakeRunner.addResponse(executable: 'docker', arguments: ['--version'], exitCode: 0, stdout: 'Docker version 24.0.6');
+      // All specific paths fail; fallback succeeds.
+      if (Platform.isMacOS) {
+        fakeRunner.addResponse(executable: '/usr/local/bin/docker', arguments: ['--version'], exitCode: 127);
+        fakeRunner.addResponse(executable: '/opt/homebrew/bin/docker', arguments: ['--version'], exitCode: 127);
+      } else if (Platform.isWindows) {
+        fakeRunner.addResponse(executable: r'C:\Program Files\Docker\Docker\resources\bin\docker.exe', arguments: ['--version'], exitCode: 127);
+      } else if (Platform.isLinux) {
+        fakeRunner.addResponse(executable: '/usr/bin/docker', arguments: ['--version'], exitCode: 127);
+        fakeRunner.addResponse(executable: '/usr/local/bin/docker', arguments: ['--version'], exitCode: 127);
+        fakeRunner.addResponse(executable: '/snap/bin/docker', arguments: ['--version'], exitCode: 127);
+      }
+
+      final fallbackExecutable = Platform.isWindows ? 'docker.exe' : 'docker';
+      fakeRunner.addResponse(executable: fallbackExecutable, arguments: ['--version'], exitCode: 0, stdout: 'Docker version 24.0.6');
 
       expect(await service.isDockerInstalled(), isTrue);
     });
@@ -59,7 +70,7 @@ void main() {
     test('returns true when docker info exits 0', () async {
       _stubDockerInstalled(fakeRunner);
       fakeRunner.addResponse(
-        executable: '/usr/local/bin/docker',
+        executable: _getPlatformDockerPath(),
         arguments: ['info'],
         exitCode: 0,
         stdout: 'Server Version: 24.0.6',
@@ -71,7 +82,7 @@ void main() {
     test('returns false when docker info exits non-zero (daemon stopped)', () async {
       _stubDockerInstalled(fakeRunner);
       fakeRunner.addResponse(
-        executable: '/usr/local/bin/docker',
+        executable: _getPlatformDockerPath(),
         arguments: ['info'],
         exitCode: 1,
         stderr: 'Cannot connect to the Docker daemon',
@@ -96,7 +107,7 @@ void main() {
     test('returns stopped when installed but daemon not running', () async {
       _stubDockerInstalled(fakeRunner);
       fakeRunner.addResponse(
-        executable: '/usr/local/bin/docker',
+        executable: _getPlatformDockerPath(),
         arguments: ['info'],
         exitCode: 1,
         stderr: 'Cannot connect to the Docker daemon',
@@ -108,7 +119,7 @@ void main() {
     test('returns running when installed and daemon responds', () async {
       _stubDockerInstalled(fakeRunner);
       fakeRunner.addResponse(
-        executable: '/usr/local/bin/docker',
+        executable: _getPlatformDockerPath(),
         arguments: ['info'],
         exitCode: 0,
         stdout: 'Server Version: 24.0.6',
@@ -125,7 +136,7 @@ void main() {
       _stubDockerInstalled(fakeRunner);
       // Provide a realistic Docker pull output.
       fakeRunner.addResponse(
-        executable: '/usr/local/bin/docker',
+        executable: _getPlatformDockerPath(),
         arguments: ['pull', 'staphb/fastqc:latest'],
         exitCode: 0,
         stdout: [
@@ -175,7 +186,7 @@ void main() {
     test('returns true when docker images -q returns a non-empty id', () async {
       _stubDockerInstalled(fakeRunner);
       fakeRunner.addResponse(
-        executable: '/usr/local/bin/docker',
+        executable: _getPlatformDockerPath(),
         arguments: ['images', '-q', 'staphb/fastqc:latest'],
         exitCode: 0,
         stdout: 'sha256:abc123',
@@ -187,7 +198,7 @@ void main() {
     test('returns false when docker images -q returns empty', () async {
       _stubDockerInstalled(fakeRunner);
       fakeRunner.addResponse(
-        executable: '/usr/local/bin/docker',
+        executable: _getPlatformDockerPath(),
         arguments: ['images', '-q', 'nonexistent:latest'],
         exitCode: 0,
         stdout: '',
@@ -200,12 +211,24 @@ void main() {
 
 // ── Test helpers ──────────────────────────────────────────────────────────────
 
-/// Stub the docker --version check so the service finds it at the macOS Intel path.
+/// Stub the docker --version check so the service finds it at the platform-specific path.
 void _stubDockerInstalled(FakeProcessRunner fake) {
   fake.addResponse(
-    executable: '/usr/local/bin/docker',
+    executable: _getPlatformDockerPath(),
     arguments: ['--version'],
     exitCode: 0,
     stdout: 'Docker version 24.0.6, build ed223bc',
   );
+}
+
+/// Get the expected primary Docker executable path for the current host OS.
+String _getPlatformDockerPath() {
+  if (Platform.isMacOS) {
+    return '/usr/local/bin/docker';
+  } else if (Platform.isWindows) {
+    return r'C:\Program Files\Docker\Docker\resources\bin\docker.exe';
+  } else if (Platform.isLinux) {
+    return '/usr/bin/docker';
+  }
+  return 'docker';
 }

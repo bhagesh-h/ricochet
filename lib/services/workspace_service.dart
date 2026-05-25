@@ -213,9 +213,10 @@ class WorkspaceService {
     return finalPath;
   }
 
-  /// Recursive directory copy helper
+  /// Recursive directory copy helper using concurrent file copying
   Future<void> _copyDirectory(Directory source, Directory destination) async {
-    await for (var entity in source.list(recursive: false)) {
+    final entities = await source.list(recursive: false).toList();
+    final futures = entities.map((entity) async {
       if (entity is Directory) {
         final newDest = Directory(path.join(destination.path, path.basename(entity.path)));
         await newDest.create(recursive: true);
@@ -223,7 +224,8 @@ class WorkspaceService {
       } else if (entity is File) {
         await entity.copy(path.join(destination.path, path.basename(entity.path)));
       }
-    }
+    });
+    await Future.wait(futures);
   }
 
   /// Get output file path for a node (Old logic, kept for backward compatibility if needed, 

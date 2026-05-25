@@ -1,11 +1,13 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
+import 'package:window_manager/window_manager.dart';
 import '../controllers/home_controller.dart';
 import '../models/pipeline_template.dart';
 import '../services/docker_service.dart';
 import 'widgets/ricochet_logo.dart';
 import 'widgets/about_dialog.dart';
+import 'widgets/window_buttons.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // HomeScreen — root widget
@@ -45,31 +47,38 @@ class _TopBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      height: 52,
-      decoration: const BoxDecoration(
-        color: Colors.white,
-        border: Border(bottom: BorderSide(color: Color(0xFFE2E8F0))),
-      ),
-      padding: const EdgeInsets.symmetric(horizontal: 24),
-      child: Row(
-        children: [
-          // Brand mark
-          const RicochetLogo(height: 20),
-          const Spacer(),
-          // Keyboard shortcut hint
-          _TopBarButton(
-            icon: Icons.keyboard_rounded,
-            tooltip: 'Keyboard shortcuts',
-            onTap: _showShortcuts,
-          ),
-          const SizedBox(width: 4),
-          _TopBarButton(
-            icon: Icons.info_outline_rounded,
-            tooltip: 'About Ricochet',
-            onTap: () => Get.dialog(const ModernAboutDialog()),
-          ),
-        ],
+    return DragToMoveArea(
+      child: Container(
+        height: 52,
+        decoration: const BoxDecoration(
+          color: Colors.white,
+          border: Border(bottom: BorderSide(color: Color(0xFFE2E8F0))),
+        ),
+        padding: EdgeInsets.only(left: Platform.isMacOS ? 80 : 24),
+        child: Row(
+          children: [
+            // Brand mark
+            const RicochetLogo(height: 20),
+            const Spacer(),
+            // Keyboard shortcut hint
+            _TopBarButton(
+              icon: Icons.keyboard_rounded,
+              tooltip: 'Keyboard shortcuts',
+              onTap: _showShortcuts,
+            ),
+            const SizedBox(width: 4),
+            _TopBarButton(
+              icon: Icons.info_outline_rounded,
+              tooltip: 'About Ricochet',
+              onTap: () => Get.dialog(const ModernAboutDialog()),
+            ),
+            if (!Platform.isMacOS) ...[
+              const SizedBox(width: 12),
+              const VerticalDivider(width: 1, color: Color(0xFFE2E8F0), indent: 16, endIndent: 16),
+              const WindowButtons(),
+            ],
+          ],
+        ),
       ),
     );
   }

@@ -51,26 +51,30 @@ void main() {
     });
   });
 
-  // ── createRunDirectory ──────────────────────────────────────────────────────
+  // ── createStagingDirectory ──────────────────────────────────────────────────
 
-  group('createRunDirectory', () {
-    test('creates a directory inside the workspace', () async {
-      final workspaceDir = await service.getWorkspaceDirectory();
-      final runDir = await service.createRunDirectory();
+  group('createStagingDirectory', () {
+    test('creates a directory inside system temp', () async {
+      final runDir = await service.createStagingDirectory('test_node');
       expect(await runDir.exists(), isTrue);
-      expect(runDir.path, startsWith(workspaceDir.path));
+      expect(runDir.path, startsWith(Directory.systemTemp.path));
+      if (await runDir.exists()) {
+        await runDir.delete(recursive: true);
+      }
     });
 
     test('successive calls produce distinct paths', () async {
-      final dir1 = await service.createRunDirectory();
-      final dir2 = await service.createRunDirectory();
+      final dir1 = await service.createStagingDirectory('test_node_1');
+      final dir2 = await service.createStagingDirectory('test_node_2');
       expect(dir1.path, isNot(equals(dir2.path)));
+      if (await dir1.exists()) await dir1.delete(recursive: true);
+      if (await dir2.exists()) await dir2.delete(recursive: true);
     });
 
-    test('run directory contains a run identifier component', () async {
-      final runDir = await service.createRunDirectory();
-      // Directory name must not be empty and must be under workspace.
-      expect(runDir.path.length, greaterThan(testDir.path.length));
+    test('staging directory contains node name identifier', () async {
+      final runDir = await service.createStagingDirectory('custom_node_name');
+      expect(runDir.path, contains('custom_node_name'));
+      if (await runDir.exists()) await runDir.delete(recursive: true);
     });
   });
 

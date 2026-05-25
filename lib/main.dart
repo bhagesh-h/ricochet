@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:file_picker/file_picker.dart';
+import 'package:window_manager/window_manager.dart';
 import 'package:Ricochet/controllers/docker_search_controller.dart';
 import 'controllers/pipeline_controller.dart';
 import 'controllers/execution_controller.dart';
@@ -15,9 +16,24 @@ import 'views/widgets/execution_panel.dart';
 import 'views/widgets/docker_status_banner.dart';
 import 'views/widgets/pipeline_tab_bar.dart';
 
-void main() {
+void main() async {
   // Initialize controllers before runApp
   WidgetsFlutterBinding.ensureInitialized();
+  await windowManager.ensureInitialized();
+
+  WindowOptions windowOptions = const WindowOptions(
+    size: Size(1280, 720),
+    minimumSize: Size(960, 540),
+    center: true,
+    backgroundColor: Colors.transparent,
+    skipTaskbar: false,
+    titleBarStyle: TitleBarStyle.hidden, // Hides native OS title bar
+  );
+  windowManager.waitUntilReadyToShow(windowOptions, () async {
+    await windowManager.show();
+    await windowManager.focus();
+  });
+
   Get.put(PipelineController());
   Get.put(ExecutionController());
   Get.put(DockerSearchController());

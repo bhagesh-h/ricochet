@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'package:get/get.dart';
 import '../services/workspace_service.dart';
 import 'pipeline_tabs_controller.dart';
@@ -22,7 +23,10 @@ class HomeController extends GetxController {
   @override
   void onReady() {
     super.onReady();
-    Get.dialog(const ModernAboutDialog(), barrierDismissible: false);
+    // Do not show dialog in test environment to prevent null navigator context errors
+    if (!Platform.environment.containsKey('FLUTTER_TEST')) {
+      Get.dialog(const ModernAboutDialog(), barrierDismissible: false);
+    }
   }
 
   Future<void> loadRecent() async {
