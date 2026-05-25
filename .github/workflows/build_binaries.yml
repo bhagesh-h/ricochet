@@ -32,7 +32,7 @@ jobs:
 
           - target: macOS
             os: macos-latest
-            build-cmd: flutter build macos --release --no-codesign
+            build-cmd: flutter build macos --release
             artifact-name: ricochet-macos
             artifact-file: ricochet.dmg
 
