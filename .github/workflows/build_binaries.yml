@@ -1,0 +1,164 @@
+name: Generate Desktop Binaries
+
+on:
+  push:
+    branches:
+      - main
+      - master
+  pull_request:
+    branches:
+      - main
+      - master
+  workflow_dispatch:
+
+permissions:
+  contents: write  # Crucial to grant release creation permissions to the GITHUB_TOKEN
+
+jobs:
+  build:
+    name: Build ${{ matrix.target }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: Windows
+            os: windows-latest
+            build-cmd: flutter build windows --release
+            artifact-name: ricochet-windows
+
+          - target: macOS
+            os: macos-latest
+            build-cmd: flutter build macos --release
+            artifact-name: ricochet-macos
+
+          - target: Linux
+            os: ubuntu-latest
+            build-cmd: flutter build linux --release
+            artifact-name: ricochet-linux
+
+    steps:
+      # ── Checkout Repository ──────────────────────────────────────────────────
+      - name: Checkout Source Code
+        uses: actions/checkout@v4
+
+      # ── Install Linux System Dependencies ────────────────────────────────────
+      - name: Install Linux Build Dependencies
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang cmake ninja-build pkg-config libgtk-3-dev liblzma-dev libstdc++-12-dev
+
+      # ── Set Up Flutter ───────────────────────────────────────────────────────
+      - name: Set Up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: "3.x"
+          channel: stable
+          cache: true
+
+      # ── Cache Pub Packages ──────────────────────────────────────────────────
+      - name: Cache Pub Packages
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.pub-cache
+          key: ${{ runner.os }}-pub-${{ hashFiles('**/pubspec.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-pub-
+
+      # ── Flutter Pub Get ──────────────────────────────────────────────────────
+      - name: Get Packages
+        run: flutter pub get
+
+      # ── Build Desktop Application ───────────────────────────────────────────
+      - name: Compile Desktop Binary
+        run: ${{ matrix.build-cmd }}
+
+      # ── Compress Build Artifacts for Easy Download ──────────────────────────
+      - name: Package Windows Binary
+        if: matrix.target == 'Windows'
+        run: |
+          Compress-Archive -Path build\windows\x64\runner\Release\* -DestinationPath ricochet-windows.zip
+
+      - name: Package macOS Binary
+        if: matrix.target == 'macOS'
+        run: |
+          cd build/macos/Build/Products/Release
+          zip -r ../../../../ricochet-macos.zip .
+
+      - name: Package Linux Binary
+        if: matrix.target == 'Linux'
+        run: |
+          cd build/linux/x64/release/bundle
+          zip -r ../../../../ricochet-linux.zip .
+
+      # ── Upload Package Archive to GitHub ─────────────────────────────────────
+      - name: Upload Release Archive
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact-name }}
+          path: ${{ matrix.artifact-name }}.zip
+          if-no-files-found: error
+
+  release:
+    name: Publish GitHub Release
+    needs: build
+    runs-on: ubuntu-latest
+    # Only publish release on branch pushes to main/master (not on pull requests)
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+    steps:
+      # ── Create Temporary Directory for Downloads ─────────────────────────────
+      - name: Create Workspace Folder
+        run: mkdir -p artifacts
+
+      # ── Download Windows Zip Archive ──────────────────────────────────────────
+      - name: Download Windows Artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: ricochet-windows
+          path: artifacts
+
+      # ── Download macOS Zip Archive ────────────────────────────────────────────
+      - name: Download macOS Artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: ricochet-macos
+          path: artifacts
+
+      # ── Download Linux Zip Archive ────────────────────────────────────────────
+      - name: Download Linux Artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: ricochet-linux
+          path: artifacts
+
+      # ── Compile GitHub Release with Direct Downloads ────────────────────────
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v1.0.0-build.${{ github.run_number }}
+          name: Ricochet Build v1.0.0 (Run #${{ github.run_number }})
+          body: |
+            Continuous integration development builds generated automatically by GitHub Actions.
+            
+            ### 📦 Direct Downloads
+            - 🖥️ **Windows Target**: [ricochet-windows.zip](https://github.com/${{ github.repository }}/releases/download/v1.0.0-build.${{ github.run_number }}/ricochet-windows.zip)
+            - 🍎 **macOS Target**: [ricochet-macos.zip](https://github.com/${{ github.repository }}/releases/download/v1.0.0-build.${{ github.run_number }}/ricochet-macos.zip)
+            - 🐧 **Linux Target**: [ricochet-linux.zip](https://github.com/${{ github.repository }}/releases/download/v1.0.0-build.${{ github.run_number }}/ricochet-linux.zip)
+            
+            ---
+            
+            ### 🔍 Build Specifications
+            - **Repository**: `${{ github.repository }}`
+            - **Branch**: `${{ github.ref_name }}`
+            - **Commit SHA**: `${{ github.sha }}`
+            - **Trigger Event**: `${{ github.event_name }}`
+          draft: false
+          prerelease: true
+          files: |
+            artifacts/ricochet-windows.zip
+            artifacts/ricochet-macos.zip
+            artifacts/ricochet-linux.zip
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
