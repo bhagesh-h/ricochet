@@ -106,23 +106,24 @@ jobs:
           echo "=== Diagnostic: Listing Build bundle directory ==="
           ls -la build/linux/x64/release/bundle || true
           echo "=== Creating Self-Extracting Executable Script ==="
-          cat << 'EOF' > launcher.sh
-#!/bin/bash
-set -e
-# Create temporary directory inside user's temp path
-TEMP_DIR=$(mktemp -d /tmp/ricochet_run_XXXXXX)
-# Locate start of compressed archive payload
-PAYLOAD_LINE=$(awk '/^__ARCHIVE_BELOW__/ {print NR + 1; exit 0;}' "$0")
-# Extract embedded bundle contents silently
-tail -n +$PAYLOAD_LINE "$0" | tar -xz -C "$TEMP_DIR"
-# Run standalone Linux GTK binary with local shared libraries
-LD_LIBRARY_PATH="$TEMP_DIR/lib" "$TEMP_DIR/ricochet" "$@"
-EXIT_CODE=$?
-# Clean up temporary folders silently on shutdown
-rm -rf "$TEMP_DIR"
-exit $EXIT_CODE
-__ARCHIVE_BELOW__
-EOF
+          # Use cut to strip exactly the 10 leading spaces of YAML indentation so the shebang starts at column 1!
+          cat << 'EOF' | cut -c11- > launcher.sh
+          #!/bin/bash
+          set -e
+          # Create temporary directory inside user's temp path
+          TEMP_DIR=$(mktemp -d /tmp/ricochet_run_XXXXXX)
+          # Locate start of compressed archive payload
+          PAYLOAD_LINE=$(awk '/^__ARCHIVE_BELOW__/ {print NR + 1; exit 0;}' "$0")
+          # Extract embedded bundle contents silently
+          tail -n +$PAYLOAD_LINE "$0" | tar -xz -C "$TEMP_DIR"
+          # Run standalone Linux GTK binary with local shared libraries
+          LD_LIBRARY_PATH="$TEMP_DIR/lib" "$TEMP_DIR/ricochet" "$@"
+          EXIT_CODE=$?
+          # Clean up temporary folders silently on shutdown
+          rm -rf "$TEMP_DIR"
+          exit $EXIT_CODE
+          __ARCHIVE_BELOW__
+          EOF
           
           echo "=== Compiling Tarball Payload ==="
           cd build/linux/x64/release/bundle
