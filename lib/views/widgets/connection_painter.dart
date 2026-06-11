@@ -7,10 +7,14 @@ import '../../models/pipeline_node.dart';
 class ConnectionPainter extends CustomPainter {
   final List<PipelineNode> nodes;
   final List<Connection> connections;
+  final String? selectedConnectionId;
+  final List<String> cycleConnectionIds;
 
   ConnectionPainter({
     required this.nodes,
     required this.connections,
+    this.selectedConnectionId,
+    this.cycleConnectionIds = const [],
   });
 
   @override
@@ -20,6 +24,9 @@ class ConnectionPainter extends CustomPainter {
       final toNode = nodes.firstWhereOrNull((n) => n.id == connection.toNodeId);
 
       if (fromNode == null || toNode == null) continue;
+
+      final isSelected = connection.id == selectedConnectionId;
+      final isCycle = cycleConnectionIds.contains(connection.id);
 
       // Calculate connection points (center of left/right edges)
       final fromPoint = Offset(
@@ -31,29 +38,39 @@ class ConnectionPainter extends CustomPainter {
         toNode.position.dy + 30,    // Vertical center of block
       );
 
-      // Create gradient from source to target color
-      final gradient = LinearGradient(
-        colors: [
-          fromNode.primaryColor.withOpacity(0.8),
-          toNode.primaryColor.withOpacity(0.8),
-        ],
-        stops: const [0, 1],
-      );
-
-      // Draw connection line
-      final paint = Paint()
-        ..shader = gradient.createShader(
-          Rect.fromPoints(fromPoint, toPoint),
-        )
-        ..strokeWidth = 3
-        ..style = PaintingStyle.stroke
-        ..strokeCap = StrokeCap.round;
+      // Create paint based on state (Priority: Selected > Cycle > Default)
+      final Paint paint;
+      if (isSelected) {
+        paint = Paint()
+          ..color = const Color(0xFFEF4444)
+          ..strokeWidth = 4
+          ..style = PaintingStyle.stroke
+          ..strokeCap = StrokeCap.round;
+      } else if (isCycle) {
+        paint = Paint()
+          ..color = const Color(0xFFF59E0B) // Warning Orange
+          ..strokeWidth = 3.5
+          ..style = PaintingStyle.stroke
+          ..strokeCap = StrokeCap.round;
+      } else {
+        final gradient = LinearGradient(
+          colors: [
+            fromNode.primaryColor.withOpacity(0.8),
+            toNode.primaryColor.withOpacity(0.8),
+          ],
+          stops: const [0, 1],
+        );
+        paint = Paint()
+          ..shader = gradient.createShader(Rect.fromPoints(fromPoint, toPoint))
+          ..strokeWidth = 3
+          ..style = PaintingStyle.stroke
+          ..strokeCap = StrokeCap.round;
+      }
 
       // Draw smooth bezier curve
       final path = Path();
       path.moveTo(fromPoint.dx, fromPoint.dy);
       
-      // Calculate control points for smooth curve
       final controlPoint1 = Offset(
         fromPoint.dx + (toPoint.dx - fromPoint.dx) * 0.3,
         fromPoint.dy,
@@ -72,7 +89,8 @@ class ConnectionPainter extends CustomPainter {
       canvas.drawPath(path, paint);
 
       // Draw arrowhead at end point
-      _drawArrowhead(canvas, toPoint, controlPoint2, toNode.primaryColor);
+      _drawArrowhead(canvas, toPoint, controlPoint2,
+          isSelected ? const Color(0xFFEF4444) : toNode.primaryColor);
     }
   }
 
@@ -82,7 +100,6 @@ class ConnectionPainter extends CustomPainter {
 
     // Arrowhead properties
     const arrowLength = 12.0;
-    const arrowWidth = 8.0;
 
     // Calculate points for the arrowhead triangle
     final point1 = Offset(

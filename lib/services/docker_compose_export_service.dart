@@ -1,0 +1,333 @@
+import 'dart:convert';
+import 'package:archive/archive.dart';
+import 'package:path/path.dart' as p;
+import '../models/pipeline_node.dart';
+import 'docker_service.dart';
+
+/// Service to generate a production-ready docker-compose export of a Ricochet pipeline.
+class DockerComposeExportService {
+  final DockerService _dockerService = DockerService();
+
+  /// Generates the complete zip archive for the docker-compose export
+  Future<List<int>> generateExportZip(
+      List<PipelineNode> sortedNodes, List<Connection> connections, String pipelineName) async {
+    final archive = Archive();
+    final timestamp =
+        DateTime.now().toIso8601String().replaceAll(':', '-').split('.')[0];
+    final folderName = 'Ricochet-export_$timestamp';
+
+    // 1. Generate docker-compose.yml
+    final composeYaml = await _generateDockerComposeYaml(sortedNodes, connections);
+    archive.addFile(ArchiveFile('$folderName/docker-compose.yml', composeYaml.length, composeYaml.codeUnits));
+
+    // 2. Generate pipeline_config.env
+    final envContent = _generateEnvFile(sortedNodes, connections, pipelineName);
+    archive.addFile(ArchiveFile('$folderName/pipeline_config.env', envContent.length, envContent.codeUnits));
+    // Encode to ZIP
+    final zipEncoder = ZipEncoder();
+    final zipData = zipEncoder.encode(archive);
+    return zipData;
+  }
+
+  /// Extracts the specific Docker command from a node's parameters
+  String _getNodeCommand(PipelineNode node) {
+    // Look for a custom command override
+    final cmdParam = node.parameters.firstWhere(
+        (p) => p.key == 'docker_command' || p.key == 'command',
+        orElse: () => BlockParameter(key: 'cmd', label: 'cmd', type: ParameterType.text, value: ''));
+        
+    if (cmdParam.value != null && cmdParam.value.toString().isNotEmpty) {
+      return cmdParam.value.toString();
+    }
+    
+    // Fallback: If no explicit command is set, just return empty string 
+    // and rely on container's default Entrypoint
+    return '';
+  }
+
+  String _slugify(String text) {
+    return text.toLowerCase().replaceAll(RegExp(r'[^a-z0-9]+'), '_').trim();
+  }
+
+  Future<String> _generateDockerComposeYaml(
+      List<PipelineNode> sortedNodes, List<Connection> connections) async {
+        
+    final bool needsEmulation = await _dockerService.needsPlatformEmulation();
+        
+    final buffer = StringBuffer();
+    buffer.writeln('version: "3.8"');
+    buffer.writeln('services:');
+
+    // Build incoming connections map
+    final Map<String, List<Connection>> incomingDeps = {};
+    for (var conn in connections) {
+      if (!incomingDeps.containsKey(conn.toNodeId)) {
+        incomingDeps[conn.toNodeId] = [];
+      }
+      incomingDeps[conn.toNodeId]!.add(conn);
+    }
+
+    final Map<String, String> nodeSlugMap = {};
+    for (var node in sortedNodes) {
+      final baseSlug = _slugify(node.title);
+      // Ensure unique slugs
+      String slug = baseSlug;
+      int counter = 1;
+      while (nodeSlugMap.containsValue(slug)) {
+        slug = '${baseSlug}_$counter';
+        counter++;
+      }
+      nodeSlugMap[node.id] = slug;
+    }
+
+    for (var node in sortedNodes) {
+      final slug = nodeSlugMap[node.id]!;
+      buffer.writeln('  $slug:');
+      buffer.writeln('    image: ${node.dockerImage ?? "alpine:latest"}');
+      buffer.writeln('    container_name: $slug');
+      
+      if (needsEmulation) {
+        final platformInfo = await _dockerService.getPlatformInfo();
+        buffer.writeln('    platform: ${platformInfo.dockerPlatformFlag}');
+      }
+      
+      buffer.writeln('    user: "\${UID}:\${GID}"');
+      buffer.writeln('    volumes:');
+      buffer.writeln('      - ./raw_data:/input:ro');
+      buffer.writeln('      - ./results:/output');
+
+      // Depends On
+      final deps = incomingDeps[node.id] ?? [];
+      if (deps.isNotEmpty) {
+        buffer.writeln('    depends_on:');
+        for (var dep in deps) {
+          final upstreamNode = sortedNodes.firstWhere((n) => n.id == dep.fromNodeId);
+          final upstreamSlug = nodeSlugMap[upstreamNode.id];
+          buffer.writeln('      $upstreamSlug:');
+          buffer.writeln('        condition: service_completed_successfully');
+        }
+      }
+
+      // Environment Variables (Data Flow)
+      // Flatten all incoming files from all upstream connections into ordered
+      // slots. Input nodes contribute their multiFile list; processing/analysis
+      // nodes contribute their single output file.
+      final envVars = <String>[];
+      final List<String> allSlotPaths = [];
+      for (final dep in deps) {
+        final upstream = sortedNodes.firstWhere((n) => n.id == dep.fromNodeId);
+        final multiParam = upstream.parameters
+            .where((p) => p.type == ParameterType.multiFile)
+            .firstOrNull;
+        if (multiParam != null && multiParam.value is List) {
+          final files = (multiParam.value as List)
+              .map((e) => e.toString())
+              .where((s) => s.isNotEmpty)
+              .toList();
+          for (final f in files) {
+            allSlotPaths.add('/input/${p.basename(f)}');
+          }
+        } else {
+          final ext = upstream.outputFileName ??
+              '\${${_slugify(upstream.title).toUpperCase()}_EXT:-txt}';
+          final outName = upstream.outputFileName ??
+              '${nodeSlugMap[upstream.id]}_output.$ext';
+          allSlotPaths.add('/output/$outName');
+        }
+      }
+      // Emit INPUT_FILE (single) or INPUT_FILE_1 / _2 / … (multiple)
+      if (allSlotPaths.length == 1) {
+        envVars.add('INPUT_FILE=${allSlotPaths[0]}');
+      } else if (allSlotPaths.length > 1) {
+        for (int i = 0; i < allSlotPaths.length; i++) {
+          envVars.add('INPUT_FILE_${i + 1}=${allSlotPaths[i]}');
+        }
+        envVars.add('INPUT_FILE=${allSlotPaths[0]}'); // backward-compat alias
+      }
+
+      // Output File Name exposed to env
+      if (node.outputFileName != null) {
+        envVars.add('OUTPUT_FILE=/output/${node.outputFileName}');
+      }
+
+      // Custom parameters passed as ENV
+      for (var param in node.parameters) {
+        if (param.key == 'command' || param.key == 'docker_command') continue;
+        if (param.type == ParameterType.multiFile) {
+          continue; // handled above in data-flow section
+        } else if (param.value != null) {
+          final envKey = param.key.toUpperCase();
+          envVars.add('$envKey=\${$envKey:-${param.value}}');
+        }
+      }
+
+      if (envVars.isNotEmpty) {
+        buffer.writeln('    environment:');
+        for (var env in envVars) {
+          // Careful with quotes for complex expressions
+          buffer.writeln('      - "$env"');
+        }
+      }
+
+      // Ports (Aggregator)
+      if (node.isAggregator) {
+        buffer.writeln('    ports:');
+        buffer.writeln('      - "8080:8080"');
+      }
+
+      // Command
+      String command = _getNodeCommand(node);
+      if (node.isAggregator) {
+        if (command.isNotEmpty) command += ' && ';
+        command += 'python3 -m http.server 8080 --directory /output';
+      }
+      
+      if (command.isNotEmpty) {
+        // We use sh -c to ensure environment variables are evaluated in the container shell
+        // Using > to represent folded scalar in YAML for multiline commands
+        buffer.writeln('    command: >');
+        buffer.writeln('      sh -c "$command"');
+      }
+      
+      buffer.writeln('');
+    }
+
+    return buffer.toString();
+  }
+
+  String _generateEnvFile(List<PipelineNode> sortedNodes, List<Connection> connections, String pipelineName) {
+    final buffer = StringBuffer();
+    buffer.writeln('# Ricochet Pipeline Configuration Environment Variables');
+    buffer.writeln('# These overrides will be injected into your docker-compose services.');
+    buffer.writeln('');
+    buffer.writeln('UID=1000 # Change to your user ID');
+    buffer.writeln('GID=1000 # Change to your group ID');
+    buffer.writeln('');
+
+    for (var node in sortedNodes) {
+      buffer.writeln('# --- ${node.title} Settings ---');
+      for (var param in node.parameters) {
+        if (param.key == 'command' || param.key == 'docker_command') continue;
+        if (param.type == ParameterType.multiFile) {
+          if (param.value is List) {
+            final files = (param.value as List)
+                .map((e) => e.toString())
+                .where((s) => s.isNotEmpty)
+                .toList();
+            if (files.length == 1) {
+              buffer.writeln('INPUT_FILE=${files[0]}');
+            } else {
+              for (int i = 0; i < files.length; i++) {
+                buffer.writeln('INPUT_FILE_${i + 1}=${files[i]}');
+              }
+            }
+          }
+        } else if (param.value != null) {
+          final envKey = param.key.toUpperCase();
+          buffer.writeln('$envKey=${param.value}');
+        }
+      }
+      buffer.writeln('');
+    }
+
+    // Embed Ricochet state for reliable import
+    final stateMap = {
+      'name': pipelineName,
+      'nodes': sortedNodes.map((n) => n.toJson()).toList(),
+      'connections': connections.map((c) => c.toJson()).toList(),
+    };
+    final stateJson = jsonEncode(stateMap);
+    final stateB64 = base64Encode(utf8.encode(stateJson));
+    buffer.writeln('# RICOCHET_STATE: $stateB64');
+
+    return buffer.toString();
+  }
+
+  String _generateReadme(List<PipelineNode> sortedNodes) {
+    // Generate identical template as requested
+    final buffer = StringBuffer();
+    
+    buffer.writeln('# Ricochet Pipeline: Ricochet_pipeline');
+    buffer.writeln('');
+    buffer.writeln('This folder contains a fully reproducible, production-ready bioinformatics pipeline generated by Ricochet.');
+    buffer.writeln('');
+    buffer.writeln('## 📁 Directory Structure');
+    buffer.writeln('```');
+    buffer.writeln('Ricochet-export/');
+    buffer.writeln('├── docker-compose.yml       ← The pipeline definition');
+    buffer.writeln('├── pipeline_config.env      ← Customizable parameters');
+    buffer.writeln('├── README.md                ← This documentation');
+    buffer.writeln('├── raw_data/                ← Place your input files here');
+    buffer.writeln('└── results/                 ← Output files will appear here');
+    buffer.writeln('```');
+    buffer.writeln('');
+    
+    buffer.writeln('## Complete Bioinformatics Pipeline Example');
+    buffer.writeln('');
+    buffer.writeln('This pipeline includes the following services, executed in exact topological order:');
+    for (var i = 0; i < sortedNodes.length; i++) {
+      buffer.writeln('${i + 1}. **${_slugify(sortedNodes[i].title)}** (image: `${sortedNodes[i].dockerImage ?? "alpine:latest"}`)');
+    }
+    buffer.writeln('');
+    
+    buffer.writeln('## How to run your Ricochet pipeline');
+    buffer.writeln('');
+    buffer.writeln('### 1. Identify Input Files');
+    buffer.writeln('Place any starting data (FASTA, FASTQ, BAM, CSV) directly into the `raw_data/` folder. The first node(s) in your pipeline will access these files at `/input/`.');
+    buffer.writeln('');
+    buffer.writeln('### 2. Configure Environment (Optional)');
+    buffer.writeln('Check `pipeline_config.env` to tune threads, quality scores, and other block parameters.');
+    buffer.writeln('');
+    
+    buffer.writeln('### 3. Run the complete pipeline');
+    buffer.writeln('```bash');
+    buffer.writeln('docker compose up --build');
+    buffer.writeln('```');
+    buffer.writeln('To run in the background without locking your terminal:');
+    buffer.writeln('```bash');
+    buffer.writeln('docker compose up -d');
+    buffer.writeln('```');
+    buffer.writeln('');
+    
+    buffer.writeln('## Cheat Sheet: Docker Compose Lifecycle');
+    buffer.writeln('```bash');
+    buffer.writeln('# View live logs of all nodes:');
+    buffer.writeln('docker compose logs -f');
+    buffer.writeln('');
+    buffer.writeln('# View logs for a specific node:');
+    buffer.writeln('docker compose logs -f ${_slugify(sortedNodes.first.title)}');
+    buffer.writeln('');
+    buffer.writeln('# Stop a running pipeline:');
+    buffer.writeln('docker compose stop');
+    buffer.writeln('');
+    buffer.writeln('# Completely remove containers (keeps results/ data intact):');
+    buffer.writeln('docker compose down');
+    buffer.writeln('```');
+    buffer.writeln('');
+    
+    buffer.writeln('## Cheat Sheet: Resource Flags');
+    buffer.writeln('If your tools are OOM (Out of Memory) crashing, you can constrain limits directly in the docker-compose.yml `deploy` section, or run with inline overrides if supported by your docker daemon.');
+    buffer.writeln('');
+    
+    buffer.writeln('## Cheat Sheet: Running Specific Tools');
+    buffer.writeln('If you want to re-run only ONE step without re-running the entire pipeline, use the `run` command instead of `up`. Notice the depends_on condition is ignored this way.');
+    buffer.writeln('```bash');
+    buffer.writeln('docker compose run --rm ${_slugify(sortedNodes.first.title)}');
+    buffer.writeln('```');
+    buffer.writeln('');
+    
+    buffer.writeln('## Cheat Sheet: Docker Swarm');
+    buffer.writeln('To deploy this across a multi-node cluster (HPC):');
+    buffer.writeln('```bash');
+    buffer.writeln('docker stack deploy -c docker-compose.yml Ricochet_pipeline');
+    buffer.writeln('```');
+    buffer.writeln('');
+    
+    buffer.writeln('## Common Bio-Patterns & Fixes');
+    buffer.writeln('1. **Permission Denied in Results**: If your outputs are locked by `root`, ensure the `UID` and `GID` inside `pipeline_config.env` match your host user. (Find them via `id -u` and `id -g`).');
+    buffer.writeln('2. **Multiple Inputs**: Nodes receiving multiple connections use `\$INPUT_FILE_1`, `\$INPUT_FILE_2`, etc., corresponding to the chronological order the connections were made.');
+    buffer.writeln('3. **Aggregator Nodes**: If the last node is marked as an aggregator, it automatically starts a local web server binding to port 8080. Open `http://localhost:8080` to view results directly in your browser.');
+
+    return buffer.toString();
+  }
+}

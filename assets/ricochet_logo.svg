@@ -1,0 +1,26 @@
+<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 400 80' width='400' height='80'>
+  <defs>
+    <style>
+      @font-face {
+        font-family: 'Ubuntu';
+        font-style: normal;
+        font-weight: 700;
+        src: url(data:font/woff2;charset=utf-8;base64,) format('woff2');
+      }
+      .logo-text {
+        font-family: 'Ubuntu', sans-serif;
+        font-size: 64px;
+        font-weight: 700;
+        fill: url(#primaryGrad);
+        letter-spacing: 2px;
+      }
+    </style>
+    <linearGradient id='primaryGrad' x1='0%' y1='0%' x2='100%' y2='100%'>
+      <stop offset='0%' stop-color='#6366F1' />
+      <stop offset='100%' stop-color='#8B5CF6' />
+    </linearGradient>
+  </defs>
+  <text x='50%' y='55%' class='logo-text' dominant-baseline='middle' text-anchor='middle'>
+    RICOCHET
+  </text>
+</svg>

@@ -5,8 +5,15 @@ import '../../controllers/docker_controller.dart';
 import '../../models/docker_info.dart';
 
 /// Banner showing Docker status at the top of the app
-class DockerStatusBanner extends StatelessWidget {
+class DockerStatusBanner extends StatefulWidget {
   const DockerStatusBanner({Key? key}) : super(key: key);
+
+  @override
+  State<DockerStatusBanner> createState() => _DockerStatusBannerState();
+}
+
+class _DockerStatusBannerState extends State<DockerStatusBanner> {
+  // Apple Silicon notice is collapsed by default when Docker is healthy
 
   @override
   Widget build(BuildContext context) {
@@ -15,21 +22,29 @@ class DockerStatusBanner extends StatelessWidget {
     return Obx(() {
       final status = dockerCtrl.status.value;
 
-      // Don't show banner if Docker is running (unless Apple Silicon)
-      if (status == DockerStatus.running &&
-          !dockerCtrl.shouldShowAppleSiliconNotice) {
-        return const SizedBox.shrink();
-      }
-
-      // Don't show while checking (only on first load)
+      // Don't show while checking on first load
       if (status == DockerStatus.checking &&
           dockerCtrl.lastCheckTime.value == null) {
         return const SizedBox.shrink();
       }
 
+      // Docker is running normally (no Apple Silicon notice) — hide banner
+      if (status == DockerStatus.running &&
+          !dockerCtrl.shouldShowAppleSiliconNotice) {
+        return const SizedBox.shrink();
+      }
+
+      // Docker is running BUT Apple Silicon → hide banner (will show in AppBar)
+      if (status == DockerStatus.running &&
+          dockerCtrl.shouldShowAppleSiliconNotice) {
+        return const SizedBox.shrink();
+      }
+
+      // Docker NOT running → always-visible warning/error banner
       return _buildBanner(context, dockerCtrl, status);
     });
   }
+
 
   Widget _buildBanner(
       BuildContext context, DockerController dockerCtrl, DockerStatus status) {

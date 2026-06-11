@@ -1,11 +1,22 @@
 import 'dart:async';
+import 'package:flutter/foundation.dart';
 import 'package:get/get.dart';
 import '../models/docker_info.dart';
 import '../services/docker_service.dart';
 
 /// Controller for managing Docker state and health checks
 class DockerController extends GetxController {
-  final DockerService _dockerService = DockerService();
+  /// Creates a [DockerController] with the shared singleton [DockerService].
+  DockerController() : _dockerService = DockerService();
+
+  /// Creates a [DockerController] with an injected [DockerService].
+  ///
+  /// Use this in tests to supply a [DockerService.withRunner] instance.
+  @visibleForTesting
+  DockerController.withService(DockerService dockerService)
+      : _dockerService = dockerService;
+
+  final DockerService _dockerService;
 
   // Observable state
   var status = DockerStatus.checking.obs;

@@ -1,0 +1,191 @@
+name: Generate Desktop Binaries
+
+on:
+  push:
+    branches:
+      - main
+      - master
+      - ui
+  pull_request:
+    branches:
+      - main
+      - master
+      - ui
+  workflow_dispatch:
+
+permissions:
+  contents: write  # Crucial to grant release creation permissions to the GITHUB_TOKEN
+
+jobs:
+  build:
+    name: Build ${{ matrix.target }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: Windows
+            os: windows-latest
+            build-cmd: flutter build windows --release
+            artifact-name: ricochet-windows
+            artifact-file: ricochet.exe
+
+          - target: macOS
+            os: macos-latest
+            build-cmd: flutter build macos --release
+            artifact-name: ricochet-macos
+            artifact-file: ricochet.dmg
+
+          - target: Linux
+            os: ubuntu-latest
+            build-cmd: flutter build linux --release
+            artifact-name: ricochet-linux
+            artifact-file: ricochet
+
+    steps:
+      # ── Checkout Repository ──────────────────────────────────────────────────
+      - name: Checkout Source Code
+        uses: actions/checkout@v4
+
+      # ── Install Linux System Dependencies ────────────────────────────────────
+      - name: Install Linux Build Dependencies
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang cmake ninja-build pkg-config libgtk-3-dev liblzma-dev libstdc++-12-dev
+
+      # ── Set Up Flutter with Native Pub Cache ─────────────────────────────────
+      - name: Set Up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: "3.x"
+          channel: stable
+          cache: true  # Automatically caches Flutter SDK and Pub dependencies natively based on OS
+
+      # ── Cache CocoaPods to Speed Up macOS Builds ────────────────────────────
+      - name: Cache CocoaPods
+        if: matrix.os == 'macos-latest'
+        uses: actions/cache@v4
+        with:
+          path: macos/Pods
+          key: ${{ runner.os }}-pods-${{ hashFiles('macos/Podfile.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-pods-
+
+      # ── Flutter Pub Get ──────────────────────────────────────────────────────
+      - name: Get Packages
+        run: flutter pub get
+
+      # ── Build Desktop Application ───────────────────────────────────────────
+      - name: Compile Desktop Binary
+        run: ${{ matrix.build-cmd }}
+
+      # ── Compress Build Artifacts for Easy Download ──────────────────────────
+      # For Windows, compile a single self-contained executable that bundles all DLLs and data assets!
+      - name: Package Windows Binary
+        if: matrix.target == 'Windows'
+        run: |
+          echo "=== Zipping Windows Build Files ==="
+          Compress-Archive -Path build\windows\x64\runner\Release\* -DestinationPath payload.zip
+          echo "=== Compiling Single Self-Contained Standalone Executable ==="
+          C:\Windows\Microsoft.NET\Framework64\v4.0.30319\csc.exe /nologo /nowarn:1668 /target:winexe /reference:System.IO.Compression.dll /reference:System.IO.Compression.FileSystem.dll /reference:System.Windows.Forms.dll /resource:payload.zip /win32icon:windows\runner\resources\app_icon.ico /out:ricochet.exe windows\runner\Launcher.cs
+
+      # For macOS, compile a native .dmg disk image containing the .app bundle!
+      - name: Package macOS Binary
+        if: matrix.target == 'macOS'
+        run: |
+          echo "=== Diagnostic: Listing Build Products directory ==="
+          ls -la build/macos/Build/Products/Release || true
+          echo "=== Generating Single Standalone DMG Installer Disk Image ==="
+          hdiutil create -volname "Ricochet" -srcfolder build/macos/Build/Products/Release/Ricochet.app -ov -format UDZO ricochet.dmg
+
+      # For Linux, compile a single self-extracting standalone binary!
+      - name: Package Linux Binary
+        if: matrix.target == 'Linux'
+        run: |
+          echo "=== Diagnostic: Listing Build bundle directory ==="
+          ls -la build/linux/x64/release/bundle || true
+          echo "=== Creating Self-Extracting Executable Script ==="
+          # Use cut to strip exactly the 10 leading spaces of YAML indentation so the shebang starts at column 1!
+          cat << 'EOF' | cut -c11- > launcher.sh
+          #!/bin/bash
+          set -e
+          # Create temporary directory inside user's temp path
+          TEMP_DIR=$(mktemp -d /tmp/ricochet_run_XXXXXX)
+          # Locate start of compressed archive payload
+          PAYLOAD_LINE=$(awk '/^__ARCHIVE_BELOW__/ {print NR + 1; exit 0;}' "$0")
+          # Extract embedded bundle contents silently
+          tail -n +$PAYLOAD_LINE "$0" | tar -xz -C "$TEMP_DIR"
+          # Run standalone Linux GTK binary with local shared libraries
+          LD_LIBRARY_PATH="$TEMP_DIR/lib" "$TEMP_DIR/ricochet" "$@"
+          EXIT_CODE=$?
+          # Clean up temporary folders silently on shutdown
+          rm -rf "$TEMP_DIR"
+          exit $EXIT_CODE
+          __ARCHIVE_BELOW__
+          EOF
+          
+          echo "=== Compiling Tarball Payload ==="
+          cd build/linux/x64/release/bundle
+          tar -czf ../../../../../payload.tar.gz .
+          cd ../../../../../
+          
+          echo "=== Concatenating Binary and Payload ==="
+          cat launcher.sh payload.tar.gz > ricochet
+          chmod +x ricochet
+
+      # ── Upload Package Archive to GitHub ─────────────────────────────────────
+      - name: Upload Release Archive
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact-name }}
+          path: ${{ matrix.artifact-file }}
+          if-no-files-found: error
+
+  release:
+    name: Publish GitHub Release
+    needs: build
+    runs-on: ubuntu-latest
+    # Only publish release on branch pushes (not on pull requests)
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+    steps:
+      # ── Create Temporary Directory for Downloads ─────────────────────────────
+      - name: Create Workspace Folder
+        run: mkdir -p artifacts
+
+      # ── Download All Standalone Artifacts Concurrently ───────────────────────
+      - name: Download Standalone Artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+
+      # ── Compile GitHub Release with Direct Downloads ────────────────────────
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v1.0.0-build.${{ github.run_number }}
+          name: Ricochet Build v1.0.0 (Run #${{ github.run_number }})
+          body: |
+            Continuous integration development builds generated automatically by GitHub Actions.
+            
+            ### 📦 Direct Downloads
+            - 🖥️ **Windows Target**: [ricochet.exe](https://github.com/${{ github.repository }}/releases/download/v1.0.0-build.${{ github.run_number }}/ricochet.exe) (Single standalone executable)
+            - 🍎 **macOS Target**: [ricochet.dmg](https://github.com/${{ github.repository }}/releases/download/v1.0.0-build.${{ github.run_number }}/ricochet.dmg) (Single standalone DMG disk image)
+            - 🐧 **Linux Target**: [ricochet](https://github.com/${{ github.repository }}/releases/download/v1.0.0-build.${{ github.run_number }}/ricochet) (Single self-extracting executable binary)
+            
+            ---
+            
+            ### 🔍 Build Specifications
+            - **Repository**: `${{ github.repository }}`
+            - **Branch**: `${{ github.ref_name }}`
+            - **Commit SHA**: `${{ github.sha }}`
+            - **Trigger Event**: `${{ github.event_name }}`
+          draft: false
+          prerelease: true
+          files: |
+            artifacts/ricochet.exe
+            artifacts/ricochet.dmg
+            artifacts/ricochet
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
