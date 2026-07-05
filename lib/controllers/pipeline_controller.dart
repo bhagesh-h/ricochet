@@ -10,6 +10,9 @@ import '../models/docker_pull_progress.dart';
 import '../services/docker_service.dart';
 import '../services/workspace_service.dart';
 import '../services/docker_compose_export_service.dart';
+import '../models/pipeline_execution_context.dart';
+import '../models/node_execution_identity.dart';
+import '../services/pipeline_graph_scheduler.dart';
 import 'pipeline_tabs_controller.dart';
 import 'dart:async';
 import 'dart:convert';
@@ -45,6 +48,8 @@ class PipelineController extends GetxController {
   final Map<String, List<String>> _redoStacks = {};
   String? _currentTabId;
 
+  String? get currentTabId => _currentTabId;
+
   @override
   void onInit() {
     super.onInit();
@@ -73,6 +78,29 @@ class PipelineController extends GetxController {
       _redoStacks[tab.id] = [];
       _saveHistoryState();
     }
+  }
+
+  void loadPipelineDataFromState(
+    String tabId,
+    List<PipelineNode> sourceNodes,
+    List<Connection> sourceConnections,
+  ) {
+    _currentTabId = tabId;
+
+    nodes.value = sourceNodes
+        .map((node) => PipelineNode.fromJson(node.toJson()))
+        .toList();
+    connections.value = sourceConnections
+        .map((connection) => Connection.fromJson(connection.toJson()))
+        .toList();
+    selectedNode.value = null;
+    selectedConnectionId.value = null;
+
+    _saveHistoryState();
+    fitViewRequest.value++;
+
+    _undoStacks.putIfAbsent(tabId, () => []);
+    _redoStacks.putIfAbsent(tabId, () => []);
   }
 
   void saveStateToPipelineFile(PipelineFile tab) {
@@ -754,9 +782,22 @@ class PipelineController extends GetxController {
     Map<String, String>? upstreamOutputs,
     Map<String, List<String>>? upstreamInputs,
     String? pipelineName,
+    PipelineExecutionContext? executionContext,
+    NodeExecutionIdentity? executionIdentity,
   }) async {
-    final node = nodes.firstWhereOrNull((n) => n.id == nodeId);
+    final ctx = executionContext ?? PipelineExecutionContext.live(this);
+    final node = ctx.findNode(nodeId);
     if (node == null) return;
+
+    final identity = executionIdentity ??
+        NodeExecutionIdentity(
+          tabId: ctx.tabId,
+          nodeId: nodeId,
+          nodeTitle: node.title,
+        );
+
+    void setStatus(String id, BlockStatus status) => ctx.setNodeStatus(id, status);
+    void refresh(String id) => ctx.refreshNode(id);
 
     // Reset execution-facing state for this run
     node.executionStatus = null;
@@ -766,9 +807,9 @@ class PipelineController extends GetxController {
 
     // ─── Special handling: Input node (file picker — no Docker container) ──────
     if (node.category == BlockCategory.input) {
-      setNodeStatus(nodeId, BlockStatus.running);
+      setStatus(nodeId, BlockStatus.running);
       node.logs.clear();
-      update([nodeId]);
+      refresh(nodeId);
 
       // Collect selected files.  New nodes use 'files' (ParameterType.multiFile,
       // List<String>); old saved files may still use legacy 'file_path' (String).
@@ -795,8 +836,8 @@ class PipelineController extends GetxController {
             '[ERROR] No file selected. Open the Input node parameters and choose a file.');
         node.executionStatus = 'Input node is not configured: no file selected.';
         node.failureScope = NodeFailureScope.configuration;
-        setNodeStatus(nodeId, BlockStatus.failed);
-        update([nodeId]);
+        setStatus(nodeId, BlockStatus.failed);
+        refresh(nodeId);
         return;
       }
 
@@ -809,8 +850,8 @@ class PipelineController extends GetxController {
               .add('[ERROR] Make sure the path is correct and the file exists.');
           node.executionStatus = 'Input file was not found on disk.';
           node.failureScope = NodeFailureScope.configuration;
-          setNodeStatus(nodeId, BlockStatus.failed);
-          update([nodeId]);
+          setStatus(nodeId, BlockStatus.failed);
+          refresh(nodeId);
           return;
         }
       }
@@ -868,24 +909,24 @@ class PipelineController extends GetxController {
           ? 'Input file prepared successfully.'
           : '${selectedFiles.length} input files prepared successfully.';
       node.failureScope = NodeFailureScope.none;
-      setNodeStatus(nodeId, BlockStatus.success);
-      update([nodeId]);
+      setStatus(nodeId, BlockStatus.success);
+      refresh(nodeId);
       return;
     }
 
     // ─── Special handling: Output node (save / label result — no container) ───
     if (node.category == BlockCategory.output) {
-      setNodeStatus(nodeId, BlockStatus.running);
+      setStatus(nodeId, BlockStatus.running);
       node.logs.clear();
-      update([nodeId]);
+      refresh(nodeId);
 
       if (inputFiles == null || inputFiles.isEmpty) {
         node.logs.add(
             '[ERROR] Output node received no data. Connect it to an upstream node.');
         node.executionStatus = 'Output node received no upstream input.';
         node.failureScope = NodeFailureScope.configuration;
-        setNodeStatus(nodeId, BlockStatus.failed);
-        update([nodeId]);
+        setStatus(nodeId, BlockStatus.failed);
+        refresh(nodeId);
         return;
       }
 
@@ -911,8 +952,8 @@ class PipelineController extends GetxController {
 
       node.executionStatus = 'Output node resolved pipeline output successfully.';
       node.failureScope = NodeFailureScope.none;
-      setNodeStatus(nodeId, BlockStatus.success);
-      update([nodeId]);
+      setStatus(nodeId, BlockStatus.success);
+      refresh(nodeId);
       return;
     }
 
@@ -925,21 +966,21 @@ class PipelineController extends GetxController {
           '[ERROR] Set the Docker Image field in the node parameters, then re-run.');
       node.executionStatus = 'Docker image is not configured for this node.';
       node.failureScope = NodeFailureScope.configuration;
-      setNodeStatus(nodeId, BlockStatus.failed);
-      update([nodeId]);
+      setStatus(nodeId, BlockStatus.failed);
+      refresh(nodeId);
       return;
     }
 
     try {
-      setNodeStatus(nodeId, BlockStatus.running);
+      setStatus(nodeId, BlockStatus.running);
       node.failureScope = NodeFailureScope.none;
 
       // Clear previous logs
       node.logs.clear();
-      update([node.id]);
+      refresh(node.id);
 
       // Create staging output directory
-      final stagingDir = await _workspaceService.createStagingDirectory(node.title);
+      final stagingDir = await _workspaceService.createStagingDirectory(identity);
       final outputFilePath = path.join(stagingDir.path, 'output.txt');
       final outputFile = File(outputFilePath);
       final outputSink = outputFile.openWrite();
@@ -1138,11 +1179,11 @@ class PipelineController extends GetxController {
       node.logs.add('[SYSTEM] Env     : $previewEnv');
       node.logs.add('[SYSTEM] Command : $previewCmd');
       node.logs.add('[SYSTEM] ────────────────────────────────────────────────');
-      update([nodeId]);
+      refresh(nodeId);
 
       final process = await _dockerService.runContainer(
         image: fullImage,
-        containerName: node.id,
+        containerName: identity.containerName,
         platform: platformFlag,
         command: command,
         volumes: normalizedVolumes,
@@ -1166,7 +1207,7 @@ class PipelineController extends GetxController {
             node.logs.add('[STDOUT] $line');
             outputSink.writeln(line);
           }
-          update([node.id]);
+          refresh(node.id);
         },
         onDone: () {
           if (!stdoutDone.isCompleted) stdoutDone.complete();
@@ -1186,7 +1227,7 @@ class PipelineController extends GetxController {
             node.logs.add('[STDERR] $line');
             outputSink.writeln('[ERROR] $line');
           }
-          update([node.id]);
+          refresh(node.id);
         },
         onDone: () {
           if (!stderrDone.isCompleted) stderrDone.complete();
@@ -1214,7 +1255,7 @@ class PipelineController extends GetxController {
               node.logs.add(
                 '[ERROR]    and that it reads from \$INPUT_FILE, not from stdin.'
               );
-              _dockerService.stopContainer(node.id);
+              _dockerService.stopContainer(identity.containerName);
               return 124; // Standard timeout exit code
             },
           );
@@ -1240,12 +1281,12 @@ class PipelineController extends GetxController {
 
       // ── Finalize Output (Deduplication / Versioning) ──
       node.logs.add('[SYSTEM] Finalizing results...');
-      update([node.id]);
+      refresh(node.id);
       
       final finalOutputPath = await _workspaceService.finalizeNodeOutput(
         stagingPath: stagingDir.path,
         pipelineName: pipelineName ?? 'Current Pipeline',
-        nodeName: node.title,
+        identity: identity,
         explicitOverridePath: node.outputDirectory,
       );
       
@@ -1287,20 +1328,32 @@ class PipelineController extends GetxController {
         node.executionStatus = 'Execution failed (exit code $exitCode).';
         node.failureScope = NodeFailureScope.execution;
       }
-      update([node.id]);
+      refresh(node.id);
     } catch (e) {
       print('❌ Error executing node: $e');
       node.status = BlockStatus.error;
       node.executionStatus = 'Execution error: $e';
       node.failureScope = NodeFailureScope.execution;
-      update([node.id]);
+      refresh(node.id);
     }
   }
 
   /// Stop a running node
-  Future<void> stopNode(String nodeId) async {
-    final node = nodes.firstWhereOrNull((n) => n.id == nodeId);
+  Future<void> stopNode(
+    String nodeId, {
+    PipelineExecutionContext? executionContext,
+    NodeExecutionIdentity? executionIdentity,
+  }) async {
+    final ctx = executionContext ?? PipelineExecutionContext.live(this);
+    final node = ctx.findNode(nodeId);
     if (node == null) return;
+
+    final identity = executionIdentity ??
+        NodeExecutionIdentity(
+          tabId: ctx.tabId,
+          nodeId: nodeId,
+          nodeTitle: node.title,
+        );
 
     try {
       if (node.status == BlockStatus.downloading && node.dockerImage != null) {
@@ -1310,18 +1363,18 @@ class PipelineController extends GetxController {
         node.failureScope = NodeFailureScope.canceled;
       } else if (node.status == BlockStatus.running) {
         print('🛑 Stopping container for node ${node.title}...');
-        await _dockerService.stopContainer(node.id);
+        await _dockerService.stopContainer(identity.containerName);
         node.logs.add('[SYSTEM] Execution stopped by user');
         node.executionStatus = 'Execution canceled by user.';
         node.failureScope = NodeFailureScope.canceled;
       }
 
       node.status = BlockStatus.failed;
-      update([node.id]);
+      ctx.refreshNode(nodeId);
     } catch (e) {
       print('❌ Error stopping node: $e');
       node.logs.add('[SYSTEM] Error stopping: $e');
-      update([node.id]);
+      ctx.refreshNode(nodeId);
     }
   }
 
@@ -1382,59 +1435,22 @@ class PipelineController extends GetxController {
   /// Returns the nodes in topological order (execution order).
   /// Throws an exception if a cycle is detected.
   List<PipelineNode> getExecutionOrder() {
-    // 1. Build adjacency list and in-degree map
-    final inDegree = <String, int>{};
-    final adjacencyList = <String, List<String>>{};
+    return PipelineGraphScheduler.executionOrder(nodes, connections);
+  }
 
-    // Initialize for all nodes
-    for (var node in nodes) {
-      inDegree[node.id] = 0;
-      adjacencyList[node.id] = [];
-    }
+  /// Returns execution waves for parallel scheduling.
+  ///
+  /// Each inner list contains nodes whose dependencies are satisfied at the
+  /// same time and can run concurrently. Throws if the graph has a cycle.
+  List<List<PipelineNode>> getExecutionLevels() {
+    return PipelineGraphScheduler.executionLevels(nodes, connections);
+  }
 
-    // Populate from connections
-    for (var connection in connections) {
-      // Ensure nodes still exist (in case of deletion)
-      if (inDegree.containsKey(connection.toNodeId) &&
-          inDegree.containsKey(connection.fromNodeId)) {
-        adjacencyList[connection.fromNodeId]!.add(connection.toNodeId);
-        inDegree[connection.toNodeId] = inDegree[connection.toNodeId]! + 1;
-      }
-    }
-
-    // 2. Initialize queue with nodes having in-degree 0
-    final queue = <String>[];
-    inDegree.forEach((nodeId, degree) {
-      if (degree == 0) {
-        queue.add(nodeId);
-      }
-    });
-
-    // 3. Process queue (Kahn's algorithm)
-    final sortedNodeIds = <String>[];
-    while (queue.isNotEmpty) {
-      final u = queue.removeAt(0);
-      sortedNodeIds.add(u);
-
-      if (adjacencyList.containsKey(u)) {
-        for (var v in adjacencyList[u]!) {
-          inDegree[v] = inDegree[v]! - 1;
-          if (inDegree[v] == 0) {
-            queue.add(v);
-          }
-        }
-      }
-    }
-
-    // 4. Check for cycles
-    if (sortedNodeIds.length != nodes.length) {
-      throw Exception('Cycle detected in pipeline! Please remove loops.');
-    }
-
-    // 5. Map IDs back to PipelineNode objects
-    return sortedNodeIds
-        .map((id) => nodes.firstWhere((n) => n.id == id))
-        .toList();
+  static List<List<PipelineNode>> executionLevelsFor(
+    List<PipelineNode> nodes,
+    List<Connection> connections,
+  ) {
+    return PipelineGraphScheduler.executionLevels(nodes, connections);
   }
 
   /// Export pipeline as Docker-Compose ZIP

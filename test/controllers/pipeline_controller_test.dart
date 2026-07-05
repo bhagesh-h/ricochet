@@ -258,6 +258,55 @@ void main() {
   });
 
   // ---------------------------------------------------------------------------
+  // getExecutionLevels (parallel waves)
+  // ---------------------------------------------------------------------------
+  group('getExecutionLevels', () {
+    test('linear graph returns one node per level', () {
+      ctrl.loadPipelineData(_makeFile(
+        nodes: [_node('A'), _node('B'), _node('C')],
+        connections: [
+          Connection(id: 'c1', fromNodeId: 'A', toNodeId: 'B'),
+          Connection(id: 'c2', fromNodeId: 'B', toNodeId: 'C'),
+        ],
+      ));
+      final levels = ctrl.getExecutionLevels();
+      expect(levels.map((l) => l.map((n) => n.id).toList()), [
+        ['A'],
+        ['B'],
+        ['C'],
+      ]);
+    });
+
+    test('fan-out graph groups siblings in the same level', () {
+      ctrl.loadPipelineData(_makeFile(
+        nodes: [_node('A'), _node('B'), _node('C'), _node('D')],
+        connections: [
+          Connection(id: 'c1', fromNodeId: 'A', toNodeId: 'B'),
+          Connection(id: 'c2', fromNodeId: 'A', toNodeId: 'C'),
+          Connection(id: 'c3', fromNodeId: 'B', toNodeId: 'D'),
+          Connection(id: 'c4', fromNodeId: 'C', toNodeId: 'D'),
+        ],
+      ));
+      final levels = ctrl.getExecutionLevels();
+      expect(levels.length, 3);
+      expect(levels[0].map((n) => n.id).toList(), ['A']);
+      expect(levels[1].map((n) => n.id).toList(), ['B', 'C']);
+      expect(levels[2].map((n) => n.id).toList(), ['D']);
+    });
+
+    test('throws on cyclic graph', () {
+      ctrl.loadPipelineData(_makeFile(
+        nodes: [_node('A'), _node('B')],
+        connections: [
+          Connection(id: 'c1', fromNodeId: 'A', toNodeId: 'B'),
+          Connection(id: 'c2', fromNodeId: 'B', toNodeId: 'A'),
+        ],
+      ));
+      expect(() => ctrl.getExecutionLevels(), throwsException);
+    });
+  });
+
+  // ---------------------------------------------------------------------------
   // saveStateToPipelineFile
   // ---------------------------------------------------------------------------
   group('saveStateToPipelineFile', () {

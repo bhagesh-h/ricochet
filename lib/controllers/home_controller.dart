@@ -5,7 +5,7 @@ import 'pipeline_tabs_controller.dart';
 import '../models/pipeline_template.dart';
 import '../views/widgets/about_dialog.dart';
 
-enum AppView { home, editor }
+enum AppView { home, settings, editor }
 
 class HomeController extends GetxController {
   final _workspaceService = WorkspaceService();
@@ -40,6 +40,8 @@ class HomeController extends GetxController {
     appView.value = AppView.home;
     loadRecent();
   }
+
+  void openSettings() => appView.value = AppView.settings;
 
   /// Navigate to the editor (no-op if already there).
   void openEditor() => appView.value = AppView.editor;

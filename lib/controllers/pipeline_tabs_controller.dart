@@ -8,6 +8,7 @@ import 'package:uuid/uuid.dart';
 import '../models/pipeline_file.dart';
 import '../models/pipeline_template.dart';
 import '../services/workspace_service.dart';
+import '../services/pipeline_tab_runtime_store.dart';
 import 'pipeline_controller.dart';
 import 'execution_controller.dart';
 import 'home_controller.dart';
@@ -170,22 +171,32 @@ class PipelineTabsController extends GetxController {
 
   void switchTab(String id) {
     if (activeTabId.value == id) return;
-    
+
+    final store = Get.find<PipelineTabRuntimeStore>();
+    final pipelineCtrl = Get.find<PipelineController>();
+
     // Auto-save the current tab's state before switching (if active)
     final prevTab = currentPipeline;
     if (prevTab != null) {
-      Get.find<PipelineController>().saveStateToPipelineFile(prevTab);
-      _saveActiveTabToDisk(); // immediate save before switching
+      store.captureActiveCanvas(prevTab.id, pipelineCtrl);
+      pipelineCtrl.saveStateToPipelineFile(prevTab);
+      store.syncToFile(prevTab.id, prevTab);
+      _saveActiveTabToDisk();
       _autoSaveTimer?.cancel();
     }
-    
+
     activeTabId.value = id;
-    
-    // Load the new tab's data
+
+    // Load the new tab's data through the runtime store
     final tab = currentPipeline;
     if (tab != null) {
       _loadTabFromDisk(tab).then((_) {
-        Get.find<PipelineController>().loadPipelineData(tab);
+        if (!store.hasActiveSession(tab.id)) {
+          store.hydrateFromFile(tab);
+        } else {
+          store.syncToFile(tab.id, tab);
+        }
+        store.applyToController(tab.id, pipelineCtrl);
       });
     }
   }

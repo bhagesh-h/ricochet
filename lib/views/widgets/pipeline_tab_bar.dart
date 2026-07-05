@@ -10,6 +10,7 @@ import '../../controllers/docker_controller.dart';
 import '../../controllers/home_controller.dart';
 import '../../models/pipeline_file.dart';
 import 'ricochet_logo.dart';
+import 'parallel_execution_badge.dart';
 import 'window_buttons.dart';
 
 class PipelineTabBar extends StatelessWidget {
@@ -62,6 +63,7 @@ class PipelineTabBar extends StatelessWidget {
                     return _PipelineTabWidget(
                       tab: tab,
                       isActive: isActive,
+                      isRunning: execCtrl.isRunningForTab(tab.id),
                       onTap: () => tabsCtrl.switchTab(tab.id),
                       onClose: () => tabsCtrl.closeTab(tab.id),
                       onRename: (newName) => tabsCtrl.renameTab(tab.id, newName),
@@ -146,12 +148,22 @@ class PipelineTabBar extends StatelessWidget {
               ),
             ),
             const SizedBox(width: 8),
+            const ParallelExecutionBadge(compact: true),
+            const SizedBox(width: 6),
             Obx(() {
               final isDockerReady = dockerCtrl.isReady;
+              final activeTabId = tabsCtrl.activeTabId.value;
+              final isRunning =
+                  activeTabId != null && execCtrl.isRunningForTab(activeTabId);
+              final canExecute = isDockerReady && !isRunning;
               return Tooltip(
-                message: isDockerReady ? 'Execute pipeline' : 'Docker is not running. Start Docker Desktop to execute pipelines.',
+                message: !isDockerReady
+                    ? 'Docker is not running. Start Docker Desktop to execute pipelines.'
+                    : isRunning
+                        ? 'Pipeline is already running'
+                        : 'Execute pipeline',
                 child: ElevatedButton.icon(
-                  onPressed: isDockerReady ? execCtrl.runPipeline : null,
+                  onPressed: canExecute ? execCtrl.runPipeline : null,
                   icon: const Icon(Icons.play_arrow, size: 16),
                   label: const Text('Execute'),
                   style: ElevatedButton.styleFrom(
@@ -192,6 +204,7 @@ class PipelineTabBar extends StatelessWidget {
 class _PipelineTabWidget extends StatefulWidget {
   final PipelineFile tab;
   final bool isActive;
+  final bool isRunning;
   final VoidCallback onTap;
   final VoidCallback onClose;
   final Function(String) onRename;
@@ -200,6 +213,7 @@ class _PipelineTabWidget extends StatefulWidget {
     Key? key,
     required this.tab,
     required this.isActive,
+    required this.isRunning,
     required this.onTap,
     required this.onClose,
     required this.onRename,
@@ -293,6 +307,24 @@ class _PipelineTabWidgetState extends State<_PipelineTabWidget> {
                   decoration: const BoxDecoration(
                     color: Colors.blueAccent,
                     shape: BoxShape.circle,
+                  ),
+                ),
+              if (widget.isRunning)
+                Container(
+                  margin: const EdgeInsets.only(right: 6),
+                  width: 8,
+                  height: 8,
+                  decoration: BoxDecoration(
+                    color: widget.isActive
+                        ? const Color(0xFF10B981)
+                        : const Color(0xFF34D399),
+                    shape: BoxShape.circle,
+                    boxShadow: [
+                      BoxShadow(
+                        color: const Color(0xFF10B981).withOpacity(0.45),
+                        blurRadius: 4,
+                      ),
+                    ],
                   ),
                 ),
               InkWell(

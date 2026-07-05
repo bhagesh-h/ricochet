@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:Ricochet/models/node_execution_identity.dart';
 import 'package:Ricochet/services/workspace_service.dart';
 
 import '../helpers/test_workspace_factory.dart';
@@ -54,8 +55,14 @@ void main() {
   // ── createStagingDirectory ──────────────────────────────────────────────────
 
   group('createStagingDirectory', () {
+    NodeExecutionIdentity _identity(String suffix) => NodeExecutionIdentity(
+          tabId: 'tab-$suffix',
+          nodeId: 'node-$suffix',
+          nodeTitle: 'FastQC',
+        );
+
     test('creates a directory inside system temp', () async {
-      final runDir = await service.createStagingDirectory('test_node');
+      final runDir = await service.createStagingDirectory(_identity('a'));
       expect(await runDir.exists(), isTrue);
       expect(runDir.path, startsWith(Directory.systemTemp.path));
       if (await runDir.exists()) {
@@ -64,17 +71,26 @@ void main() {
     });
 
     test('successive calls produce distinct paths', () async {
-      final dir1 = await service.createStagingDirectory('test_node_1');
-      final dir2 = await service.createStagingDirectory('test_node_2');
+      final dir1 = await service.createStagingDirectory(_identity('1'));
+      final dir2 = await service.createStagingDirectory(_identity('2'));
       expect(dir1.path, isNot(equals(dir2.path)));
       if (await dir1.exists()) await dir1.delete(recursive: true);
       if (await dir2.exists()) await dir2.delete(recursive: true);
     });
 
     test('staging directory contains node name identifier', () async {
-      final runDir = await service.createStagingDirectory('custom_node_name');
-      expect(runDir.path, contains('custom_node_name'));
+      final runDir =
+          await service.createStagingDirectory(_identity('name'));
+      expect(runDir.path, contains('FastQC'));
       if (await runDir.exists()) await runDir.delete(recursive: true);
+    });
+
+    test('same node title with different ids produces distinct paths', () async {
+      final dir1 = await service.createStagingDirectory(_identity('alpha'));
+      final dir2 = await service.createStagingDirectory(_identity('beta'));
+      expect(dir1.path, isNot(equals(dir2.path)));
+      if (await dir1.exists()) await dir1.delete(recursive: true);
+      if (await dir2.exists()) await dir2.delete(recursive: true);
     });
   });
 
