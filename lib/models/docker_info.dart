@@ -91,7 +91,6 @@ class PlatformInfo {
     final isWindows = Platform.isWindows;
     final isLinux = Platform.isLinux;
 
-    // Detect architecture
     String arch = 'unknown';
     bool isAppleSilicon = false;
 
@@ -99,17 +98,15 @@ class PlatformInfo {
       try {
         final result = await Process.run('uname', ['-m']);
         if (result.exitCode == 0) {
-          arch = result.stdout.toString().trim();
-          // Apple Silicon uses arm64 or aarch64
-          isAppleSilicon = isMacOS && (arch == 'arm64' || arch == 'aarch64');
+          arch = normalizeArchitecture(result.stdout.toString().trim());
+          isAppleSilicon =
+              isMacOS && isArmArchitecture(arch);
         }
-      } catch (e) {
-        // Fallback to Dart's built-in detection
+      } catch (_) {
         arch = 'unknown';
       }
     } else if (isWindows) {
-      // Windows architecture detection
-      arch = Platform.environment['PROCESSOR_ARCHITECTURE'] ?? 'unknown';
+      arch = detectWindowsArchitecture(Platform.environment);
     }
 
     return PlatformInfo(
@@ -122,6 +119,30 @@ class PlatformInfo {
     );
   }
 
+  /// Normalizes architecture strings from `uname`, Docker, or Windows env vars.
+  static String normalizeArchitecture(String raw) {
+    final value = raw.trim().toLowerCase();
+    if (value == 'amd64' || value == 'x86_64') return 'x86_64';
+    if (value == 'aarch64' || value == 'arm64') return 'arm64';
+    return value.isEmpty ? 'unknown' : value;
+  }
+
+  static bool isArmArchitecture(String architecture) {
+    final normalized = normalizeArchitecture(architecture);
+    return normalized == 'arm64';
+  }
+
+  /// Reads Windows env vars so Intel/AMD and ARM64 hosts are detected correctly.
+  static String detectWindowsArchitecture(Map<String, String> environment) {
+    final arch = environment['PROCESSOR_ARCHITECTURE']?.toUpperCase();
+    final wow64 = environment['PROCESSOR_ARCHITEW6432']?.toUpperCase();
+
+    if (arch == 'ARM64') return 'arm64';
+    if (arch == 'AMD64' || wow64 == 'AMD64') return 'x86_64';
+    if (arch == 'X86') return 'x86';
+    return normalizeArchitecture(arch ?? 'unknown');
+  }
+
   String get platformName {
     if (isMacOS) return 'macOS';
     if (isWindows) return 'Windows';
@@ -131,27 +152,31 @@ class PlatformInfo {
 
   String get architectureDisplay {
     if (isAppleSilicon) return 'Apple Silicon (ARM64)';
-    if (architecture == 'arm64' || architecture == 'aarch64') return 'ARM64';
-    if (architecture == 'x86_64' || architecture == 'AMD64') return 'x86_64';
+    if (isWindowsArm) return 'Windows on ARM (ARM64)';
+    if (isArmArchitecture(architecture)) return 'ARM64';
+    if (architecture == 'x86_64') return 'x86_64';
     return architecture;
   }
 
+  bool get isWindowsArm => isWindows && isArmArchitecture(architecture);
+
   /// Whether we need to pass an explicit --platform flag to Docker.
-  /// - Apple Silicon (arm64 macOS): most bioinformatics images are amd64-only,
-  ///   so we request linux/amd64 and Rosetta 2 / QEMU emulates it.
+  /// - Apple Silicon and Windows on ARM: most bioinformatics images are amd64-only,
+  ///   so we request linux/amd64 and Docker emulates it.
   /// - ARM64 Linux (e.g. Raspberry Pi, AWS Graviton): native arm64 images
   ///   exist for many tools; we request linux/arm64 to avoid emulation.
-  /// - x86_64 on any OS: no emulation needed — native amd64 containers.
-  bool get needsPlatformEmulation => isAppleSilicon || _isArmLinux;
+  /// - x86_64 on macOS, Windows, or Linux: no emulation needed — native amd64 containers.
+  bool get needsPlatformEmulation =>
+      isAppleSilicon || isWindowsArm || _isArmLinux;
 
   bool get _isArmLinux =>
-      isLinux && (architecture == 'arm64' || architecture == 'aarch64');
+      isLinux && isArmArchitecture(architecture);
 
   /// Platform flag sent to Docker via --platform.
   String get dockerPlatformFlag {
-    if (isAppleSilicon) {
+    if (isAppleSilicon || isWindowsArm) {
       // Request amd64 images so the broadest set of bioinformatics tools works
-      // (emulated by Rosetta 2 or QEMU inside Docker Desktop).
+      // (emulated by Docker Desktop on Apple Silicon or Windows on ARM).
       return 'linux/amd64';
     }
     if (_isArmLinux) {

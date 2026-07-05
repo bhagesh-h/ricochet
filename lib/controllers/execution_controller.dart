@@ -1,10 +1,12 @@
 import 'dart:async';
 import 'dart:io';
+import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import '../models/pipeline_node.dart';
+import '../models/app_settings.dart';
+import '../services/system_resource_service.dart';
 import '../models/node_execution_identity.dart';
-import '../models/pipeline_execution_context.dart';
 import '../services/pipeline_tab_runtime_store.dart';
 import 'pipeline_controller.dart';
 import 'pipeline_tabs_controller.dart';
@@ -247,12 +249,31 @@ class ExecutionController extends GetxController {
         ? Get.find<SettingsController>()
         : null;
     final useParallel = settingsCtrl?.parallelExecutionEnabled.value ?? false;
+    final maxParallelJobs = useParallel
+        ? (settingsCtrl?.resolveRuntimeParallelLimit() ??
+            AppSettings.defaultMaxParallelJobs)
+        : 1;
 
     _addLog(tabId, '🚀 Pipeline execution started');
     _addLog(tabId, '📊 Found ${session.nodes.length} blocks');
     _addLog(tabId, '🔗 Found ${session.connections.length} connections');
     if (useParallel) {
+      final cores = settingsCtrl?.logicalProcessorCount.value ??
+          SystemResourceService().logicalProcessorCount;
+      final userSetting =
+          settingsCtrl?.maxParallelJobs.value ?? AppSettings.defaultMaxParallelJobs;
       _addLog(tabId, '⚡ Parallel execution enabled');
+      _addLog(
+        tabId,
+        '   🧵 CPU threads: $cores · setting: $userSetting · '
+        'effective limit: $maxParallelJobs concurrent container(s)',
+      );
+      if (userSetting > maxParallelJobs) {
+        _addLog(
+          tabId,
+          '   ℹ️  Capped to $maxParallelJobs to match available CPU capacity',
+        );
+      }
     }
     _addLog(tabId, '');
 
@@ -301,20 +322,42 @@ class ExecutionController extends GetxController {
     final nodeOutputs = <String, String>{};
     final nodeInputs = <String, List<String>>{};
 
+    if (useParallel) {
+      settingsCtrl?.beginParallelRun(tabId);
+    }
+
     try {
       for (final level in executionLevels) {
         if (!_isRunActive(tabId, runToken)) break;
 
         if (useParallel && level.length > 1) {
-          settingsCtrl?.setParallelRunActive(true);
-          _addLog(
-            tabId,
-            '🔄 Running ${level.length} nodes in parallel: '
-            '${level.map((n) => n.title).join(', ')}',
-          );
-          try {
+          final batchSize = maxParallelJobs.clamp(1, level.length);
+          if (level.length > batchSize) {
+            _addLog(
+              tabId,
+              '🔄 Running ${level.length} nodes in parallel batches of $batchSize: '
+              '${level.map((n) => n.title).join(', ')}',
+            );
+          } else {
+            _addLog(
+              tabId,
+              '🔄 Running ${level.length} nodes in parallel: '
+              '${level.map((n) => n.title).join(', ')}',
+            );
+          }
+          for (var start = 0; start < level.length; start += batchSize) {
+            if (!_isRunActive(tabId, runToken)) break;
+            final end = min(start + batchSize, level.length);
+            final batch = level.sublist(start, end);
+            if (batch.length > 1 && level.length > batchSize) {
+              _addLog(
+                tabId,
+                '   ▶ Batch ${(start ~/ batchSize) + 1}: '
+                '${batch.map((n) => n.title).join(', ')}',
+              );
+            }
             final results = await Future.wait(
-              level.map(
+              batch.map(
                 (node) => _executeNodeInPipeline(
                   tabId: tabId,
                   runToken: runToken,
@@ -336,8 +379,6 @@ class ExecutionController extends GetxController {
               );
               return;
             }
-          } finally {
-            settingsCtrl?.setParallelRunActive(false);
           }
         } else {
           for (final node in level) {
@@ -381,7 +422,9 @@ class ExecutionController extends GetxController {
           file: tab,
         );
       }
-      settingsCtrl?.setParallelRunActive(false);
+      if (useParallel) {
+        settingsCtrl?.endParallelRun(tabId);
+      }
       _setRunning(tabId, false);
     }
   }
@@ -710,7 +753,7 @@ class ExecutionController extends GetxController {
 
     _addLog(tabId, '⚠️ Pipeline was stopped by user.');
     if (Get.isRegistered<SettingsController>()) {
-      Get.find<SettingsController>().setParallelRunActive(false);
+      Get.find<SettingsController>().endParallelRun(tabId);
     }
     _setRunning(tabId, false);
   }

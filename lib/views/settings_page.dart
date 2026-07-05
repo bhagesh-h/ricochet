@@ -6,6 +6,7 @@ import 'package:window_manager/window_manager.dart';
 
 import '../controllers/home_controller.dart';
 import '../controllers/settings_controller.dart';
+import '../models/app_settings.dart';
 import 'widgets/ricochet_logo.dart';
 import 'widgets/window_buttons.dart';
 
@@ -104,9 +105,25 @@ class SettingsPage extends StatelessWidget {
                               ),
                             );
                           }
-                          return _ParallelExecutionTile(
-                            enabled: settingsCtrl.parallelExecutionEnabled.value,
-                            onChanged: settingsCtrl.setParallelExecutionEnabled,
+                          return Column(
+                            children: [
+                              _ParallelExecutionTile(
+                                enabled:
+                                    settingsCtrl.parallelExecutionEnabled.value,
+                                onChanged: settingsCtrl.setParallelExecutionEnabled,
+                              ),
+                              if (settingsCtrl.parallelExecutionEnabled.value)
+                                _MaxParallelJobsTile(
+                                  value: settingsCtrl.maxParallelJobs.value,
+                                  logicalProcessors:
+                                      settingsCtrl.logicalProcessorCount.value,
+                                  effectiveCap:
+                                      settingsCtrl.effectiveParallelCap.value,
+                                  systemRecommendedCap:
+                                      settingsCtrl.systemRecommendedCap,
+                                  onChanged: settingsCtrl.setMaxParallelJobs,
+                                ),
+                            ],
                           );
                         }),
                       ),
@@ -333,7 +350,7 @@ class _ParallelExecutionTileState extends State<_ParallelExecutionTile> {
                                 size: 14, color: Color(0xFF6366F1)),
                             SizedBox(width: 6),
                             Text(
-                              'Works on macOS and Windows via local Docker',
+                              'Uses local Docker Desktop on macOS and Windows',
                               style: TextStyle(
                                 fontSize: 11.5,
                                 fontWeight: FontWeight.w600,
@@ -347,6 +364,201 @@ class _ParallelExecutionTileState extends State<_ParallelExecutionTile> {
                   ],
                 ),
               ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _MaxParallelJobsTile extends StatefulWidget {
+  final int value;
+  final int logicalProcessors;
+  final int effectiveCap;
+  final int systemRecommendedCap;
+  final Future<void> Function(int) onChanged;
+
+  const _MaxParallelJobsTile({
+    required this.value,
+    required this.logicalProcessors,
+    required this.effectiveCap,
+    required this.systemRecommendedCap,
+    required this.onChanged,
+  });
+
+  @override
+  State<_MaxParallelJobsTile> createState() => _MaxParallelJobsTileState();
+}
+
+class _MaxParallelJobsTileState extends State<_MaxParallelJobsTile> {
+  bool _isHovered = false;
+  bool _isSaving = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final cappedBySystem = widget.value > widget.effectiveCap;
+
+    return MouseRegion(
+      onEnter: (_) => setState(() => _isHovered = true),
+      onExit: (_) => setState(() => _isHovered = false),
+      child: Tooltip(
+        message: SettingsController.maxParallelJobsTooltip,
+        preferBelow: false,
+        waitDuration: const Duration(milliseconds: 350),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 160),
+          margin: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+          padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
+          decoration: BoxDecoration(
+            color: _isHovered ? const Color(0xFFF8FAFC) : Colors.transparent,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(
+              color: const Color(0xFFE2E8F0),
+            ),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Container(
+                    width: 42,
+                    height: 42,
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFF1F5F9),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: const Icon(
+                      Icons.speed_rounded,
+                      size: 22,
+                      color: Color(0xFF64748B),
+                    ),
+                  ),
+                  const SizedBox(width: 14),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          'Max parallel jobs',
+                          style: TextStyle(
+                            fontSize: 14.5,
+                            fontWeight: FontWeight.w700,
+                            color: Color(0xFF0F172A),
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          'Default ${AppSettings.defaultMaxParallelJobs}. '
+                          'This machine has ${widget.logicalProcessors} CPU '
+                          'thread${widget.logicalProcessors == 1 ? '' : 's'}.',
+                          style: const TextStyle(
+                            fontSize: 12.5,
+                            height: 1.45,
+                            color: Color(0xFF64748B),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 4,
+                    ),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFEEF2FF),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Text(
+                      '${widget.value}',
+                      style: const TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w800,
+                        color: Color(0xFF4338CA),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 14),
+              SliderTheme(
+                data: SliderTheme.of(context).copyWith(
+                  activeTrackColor: const Color(0xFF6366F1),
+                  inactiveTrackColor: const Color(0xFFE2E8F0),
+                  thumbColor: const Color(0xFF6366F1),
+                  overlayColor: const Color(0x336366F1),
+                  trackHeight: 4,
+                ),
+                child: Slider(
+                  value: widget.value.toDouble(),
+                  min: AppSettings.minMaxParallelJobs.toDouble(),
+                  max: AppSettings.maxMaxParallelJobs.toDouble(),
+                  divisions: AppSettings.maxMaxParallelJobs -
+                      AppSettings.minMaxParallelJobs,
+                  label: '${widget.value}',
+                  onChanged: _isSaving
+                      ? null
+                      : (value) async {
+                          final next = value.round();
+                          if (next == widget.value) return;
+                          setState(() => _isSaving = true);
+                          try {
+                            await widget.onChanged(next);
+                          } catch (_) {
+                            if (!context.mounted) return;
+                            Get.snackbar(
+                              'Could not save setting',
+                              'Your preference was not saved. Please try again.',
+                              snackPosition: SnackPosition.BOTTOM,
+                              backgroundColor: const Color(0xFFEF4444),
+                              colorText: Colors.white,
+                              margin: const EdgeInsets.all(16),
+                              duration: const Duration(seconds: 3),
+                            );
+                          } finally {
+                            if (mounted) setState(() => _isSaving = false);
+                          }
+                        },
+                ),
+              ),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    'Effective at run time: ${widget.effectiveCap} concurrent '
+                    'container${widget.effectiveCap == 1 ? '' : 's'}',
+                    style: const TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      color: Color(0xFF475569),
+                    ),
+                  ),
+                  if (cappedBySystem)
+                    const Text(
+                      'Capped by CPU capacity',
+                      style: TextStyle(
+                        fontSize: 11.5,
+                        fontWeight: FontWeight.w600,
+                        color: Color(0xFF6366F1),
+                      ),
+                    ),
+                ],
+              ),
+              if (widget.systemRecommendedCap < AppSettings.maxMaxParallelJobs)
+                Padding(
+                  padding: const EdgeInsets.only(top: 6),
+                  child: Text(
+                    'Recommended safe maximum on this machine: '
+                    '${widget.systemRecommendedCap} '
+                    '(1 thread reserved for the OS and Docker).',
+                    style: const TextStyle(
+                      fontSize: 11.5,
+                      color: Color(0xFF94A3B8),
+                    ),
+                  ),
+                ),
             ],
           ),
         ),

@@ -660,7 +660,7 @@ class DockerService {
     return platformInfo.architecture;
   }
 
-  /// Check if we need platform emulation (for Apple Silicon)
+  /// Check if we need platform emulation (Apple Silicon, Windows on ARM, etc.)
   Future<bool> needsPlatformEmulation() async {
     final platformInfo = await getPlatformInfo();
     return platformInfo.needsPlatformEmulation;
