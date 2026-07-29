@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:path/path.dart' as path;
 import 'directory_hashing_service.dart';
+import '../models/node_execution_identity.dart';
 
 /// Service to manage workspace directories for pipeline execution.
 ///
@@ -121,12 +122,11 @@ class WorkspaceService {
 
   /// Create a temporary staging directory for a node's execution.
   /// Uses the OS temp directory so no Runs folder is created on disk.
-  Future<Directory> createStagingDirectory(String nodeName) async {
-    final sanitizedName = nodeName.replaceAll(RegExp(r'[^a-zA-Z0-9_-]'), '_');
+  Future<Directory> createStagingDirectory(NodeExecutionIdentity identity) async {
     final timestamp = _getCustomTimestamp();
     final stagingPath = path.join(
       Directory.systemTemp.path,
-      'ricochet_staging_${sanitizedName}_$timestamp',
+      'ricochet_staging_${identity.pathSuffix}_$timestamp',
     );
 
     final dir = Directory(stagingPath);
@@ -139,9 +139,10 @@ class WorkspaceService {
   Future<String> finalizeNodeOutput({
     required String stagingPath,
     required String pipelineName,
-    required String nodeName,
+    required NodeExecutionIdentity identity,
     String? explicitOverridePath,
   }) async {
+    final nodeName = identity.nodeTitle;
     final stagingDir = Directory(stagingPath);
     if (!await stagingDir.exists()) return stagingPath;
 
@@ -162,7 +163,7 @@ class WorkspaceService {
     if (!await baseDir.exists()) await baseDir.create(recursive: true);
 
     // Calculate hash of staging using node-specific hash file name
-    final nodeHashFile = '.$sanitizedNode\_hash';
+    final nodeHashFile = identity.hashFileName;
     final hash = await _hashingService.calculateDirectoryHash(stagingDir, hashFileName: nodeHashFile);
     await _hashingService.writeHashFile(stagingDir, hash, hashFileName: nodeHashFile);
 
@@ -200,8 +201,7 @@ class WorkspaceService {
     final MM = now.month.toString().padLeft(2, '0');
     final YYYY = now.year.toString();
     final timestamp = '${ss}_${mm}_${hh}_${DD}_${MM}_${YYYY}';
-    
-    final finalFolderName = '${sanitizedNode}_$timestamp';
+    final finalFolderName = '${identity.pathSuffix}_$timestamp';
     
     final finalPath = path.join(baseDir.path, finalFolderName);
     final finalDir = Directory(finalPath);
@@ -231,8 +231,10 @@ class WorkspaceService {
   /// Get output file path for a node (Old logic, kept for backward compatibility if needed, 
   /// but PipelineController should use createStagingDirectory + finalizeNodeOutput)
   Future<String> getNodeOutputFilePath(String nodeId, String nodeName,
-      {String filename = 'output.txt'}) async {
-    final nodeDir = await createStagingDirectory(nodeName);
+      {String filename = 'output.txt', String tabId = 'legacy'}) async {
+    final nodeDir = await createStagingDirectory(
+      NodeExecutionIdentity(tabId: tabId, nodeId: nodeId, nodeTitle: nodeName),
+    );
     return path.join(nodeDir.path, filename);
   }
 

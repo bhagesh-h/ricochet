@@ -62,6 +62,12 @@ class _TopBar extends StatelessWidget {
             const Spacer(),
             // Keyboard shortcut hint
             _TopBarButton(
+              icon: Icons.settings_outlined,
+              tooltip: 'Settings',
+              onTap: () => Get.find<HomeController>().openSettings(),
+            ),
+            const SizedBox(width: 4),
+            _TopBarButton(
               icon: Icons.keyboard_rounded,
               tooltip: 'Keyboard shortcuts',
               onTap: _showShortcuts,

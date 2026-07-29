@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
-import 'package:file_picker/file_picker.dart';
 import 'package:window_manager/window_manager.dart';
 import 'package:Ricochet/controllers/docker_search_controller.dart';
 import 'controllers/pipeline_controller.dart';
@@ -8,13 +7,17 @@ import 'controllers/execution_controller.dart';
 import 'controllers/docker_controller.dart';
 import 'controllers/pipeline_tabs_controller.dart';
 import 'controllers/home_controller.dart';
+import 'controllers/settings_controller.dart';
 import 'controllers/system_stats_controller.dart';
+import 'services/pipeline_tab_runtime_store.dart';
 import 'views/home_screen.dart';
+import 'views/settings_page.dart';
 import 'views/pipeline_canvas.dart';
 import 'views/tool_sidebar.dart';
 import 'views/widgets/execution_panel.dart';
 import 'views/widgets/docker_status_banner.dart';
 import 'views/widgets/pipeline_tab_bar.dart';
+import 'views/widgets/parallel_execution_badge.dart';
 
 void main() async {
   // Initialize controllers before runApp
@@ -36,12 +39,14 @@ void main() async {
 
   Get.put(PipelineController());
   Get.put(ExecutionController());
+  Get.put(PipelineTabRuntimeStore());
   Get.put(DockerSearchController());
   Get.put(DockerController());
   // PipelineTabsController must come AFTER PipelineController & ExecutionController
   Get.put(PipelineTabsController());
   // HomeController manages home ↔ editor navigation
   Get.put(HomeController());
+  Get.put(SettingsController());
   Get.put(SystemStatsController());
 
   runApp(const MyApp());
@@ -65,11 +70,14 @@ class MyApp extends StatelessWidget {
       // ── Root: animate between Home screen and the Editor ──────────────────
       home: Obx(() {
         final homeCtrl = Get.find<HomeController>();
+        final view = homeCtrl.appView.value;
         return AnimatedSwitcher(
           duration: const Duration(milliseconds: 220),
-          child: homeCtrl.appView.value == AppView.home
-              ? const HomeScreen(key: ValueKey('home'))
-              : const _EditorScaffold(key: ValueKey('editor')),
+          child: switch (view) {
+            AppView.home => const HomeScreen(key: ValueKey('home')),
+            AppView.settings => const SettingsPage(key: ValueKey('settings')),
+            AppView.editor => const _EditorScaffold(key: ValueKey('editor')),
+          },
         );
       }),
       debugShowCheckedModeBanner: false,
@@ -85,7 +93,6 @@ class _EditorScaffold extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final ExecutionController execCtrl = Get.find();
-    final DockerController dockerCtrl = Get.find();
 
     return Scaffold(
         backgroundColor: const Color(0xFFF7F8FA),
@@ -186,9 +193,11 @@ class _EditorScaffold extends StatelessWidget {
                     ),
                     Obx(() {
                       if (execCtrl.isRunning.value) {
-                        return const Row(
+                        final parallelActive = Get.isRegistered<SettingsController>() &&
+                            Get.find<SettingsController>().isParallelRunActive.value;
+                        return Row(
                           children: [
-                            SizedBox(
+                            const SizedBox(
                               width: 10,
                               height: 10,
                               child: CircularProgressIndicator(
@@ -197,12 +206,18 @@ class _EditorScaffold extends StatelessWidget {
                                     Colors.white),
                               ),
                             ),
-                            SizedBox(width: 8),
+                            const SizedBox(width: 8),
                             Text(
-                              'Running Pipeline...',
-                              style: TextStyle(
+                              parallelActive
+                                  ? 'Running pipeline (parallel)...'
+                                  : 'Running Pipeline...',
+                              style: const TextStyle(
                                   color: Colors.white, fontSize: 11),
                             ),
+                            if (parallelActive) ...[
+                              const SizedBox(width: 10),
+                              const ParallelExecutionBadge(compact: true),
+                            ],
                           ],
                         );
                       }
