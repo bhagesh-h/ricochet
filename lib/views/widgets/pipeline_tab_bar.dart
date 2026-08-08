@@ -8,6 +8,8 @@ import '../../controllers/pipeline_controller.dart';
 import '../../controllers/execution_controller.dart';
 import '../../controllers/docker_controller.dart';
 import '../../controllers/home_controller.dart';
+import '../../controllers/ai_controller.dart';
+import '../../controllers/ai_review_controller.dart';
 import '../../models/pipeline_file.dart';
 import 'ricochet_logo.dart';
 import 'parallel_execution_badge.dart';
@@ -150,6 +152,35 @@ class PipelineTabBar extends StatelessWidget {
             const SizedBox(width: 8),
             const ParallelExecutionBadge(compact: true),
             const SizedBox(width: 6),
+            if (Get.isRegistered<AiController>())
+              Obx(() {
+                final ai = Get.find<AiController>();
+                if (!ai.connectivity.value.enabled) {
+                  return const SizedBox.shrink();
+                }
+                return Tooltip(
+                  message: ai.canSuggestCommand
+                      ? 'AI pre-flight review before execute'
+                      : 'Connect AI Assistant to enable review',
+                  child: TextButton.icon(
+                    onPressed: ai.canSuggestCommand &&
+                            Get.isRegistered<AiReviewController>()
+                        ? Get.find<AiReviewController>().openReview
+                        : null,
+                    icon: const Icon(Icons.fact_check_outlined, size: 16),
+                    label: const Text('Review'),
+                    style: TextButton.styleFrom(
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(horizontal: 10),
+                      minimumSize: const Size(0, 32),
+                      textStyle: const TextStyle(
+                        fontWeight: FontWeight.w600,
+                        fontSize: 12,
+                      ),
+                    ),
+                  ),
+                );
+              }),
             Obx(() {
               final isDockerReady = dockerCtrl.isReady;
               final activeTabId = tabsCtrl.activeTabId.value;

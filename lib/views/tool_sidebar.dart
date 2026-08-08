@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 
 import '../controllers/docker_search_controller.dart';
+import '../controllers/ai_controller.dart';
 import '../models/docker_image.dart';
 
 class ToolSidebar extends StatefulWidget {
@@ -103,6 +104,24 @@ class _ToolSidebarState extends State<ToolSidebar> {
     _searchTextController.clear();
     _searchFocusNode.unfocus();
     _searchController.clearSearch();
+    if (Get.isRegistered<AiController>()) {
+      Get.find<AiController>().dismissSearchAssist();
+    }
+  }
+
+  Future<void> _assistSearch() async {
+    if (!Get.isRegistered<AiController>()) return;
+    final ai = Get.find<AiController>();
+    final text = _searchTextController.text.trim();
+    if (text.isEmpty) return;
+
+    final query = await ai.assistDockerSearch(text);
+    if (!mounted || query == null) return;
+
+    _searchTextController.text = query;
+    await _searchController.searchDockerImages(query);
+    ai.dismissSearchAssist();
+    setState(() {});
   }
 
   @override
@@ -181,8 +200,12 @@ class _ToolSidebarState extends State<ToolSidebar> {
                     child: TextField(
                       controller: _searchTextController,
                       focusNode: _searchFocusNode,
+                      onChanged: (_) => setState(() {}),
                       decoration: InputDecoration(
-                        hintText: 'Search Docker images...',
+                        hintText: Get.isRegistered<AiController>() &&
+                                Get.find<AiController>().canSuggestCommand
+                            ? 'Search or describe a tool…'
+                            : 'Search Docker images...',
                         hintStyle: const TextStyle(color: Color(0xFF94A3B8)),
                         border: InputBorder.none,
                         contentPadding: const EdgeInsets.symmetric(
@@ -212,9 +235,74 @@ class _ToolSidebarState extends State<ToolSidebar> {
                     ),
                   ),
                 ),
+                if (Get.isRegistered<AiController>())
+                  Obx(() {
+                    final ai = Get.find<AiController>();
+                    if (!ai.canSuggestCommand) return const SizedBox.shrink();
+                    final busy =
+                        ai.searchAssistPhase.value == AiSearchAssistPhase.streaming;
+                    return Padding(
+                      padding: const EdgeInsets.only(left: 8),
+                      child: ActionChip(
+                        avatar: busy
+                            ? const SizedBox(
+                                width: 14,
+                                height: 14,
+                                child: CircularProgressIndicator(strokeWidth: 2),
+                              )
+                            : const Icon(Icons.auto_awesome, size: 14, color: Color(0xFF6366F1)),
+                        label: const Text('Assist'),
+                        onPressed: busy || _searchTextController.text.trim().isEmpty
+                            ? null
+                            : _assistSearch,
+                        backgroundColor: const Color(0xFFEEF2FF),
+                        side: const BorderSide(color: Color(0xFFC7D2FE)),
+                        labelStyle: const TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w700,
+                          color: Color(0xFF4338CA),
+                        ),
+                      ),
+                    );
+                  }),
               ],
             ),
           ),
+          if (Get.isRegistered<AiController>())
+            Obx(() {
+              final ai = Get.find<AiController>();
+              final phase = ai.searchAssistPhase.value;
+              if (phase == AiSearchAssistPhase.idle) {
+                return const SizedBox.shrink();
+              }
+
+              final Color bg;
+              final Color fg;
+              String message;
+              if (phase == AiSearchAssistPhase.streaming) {
+                bg = const Color(0xFFEEF2FF);
+                fg = const Color(0xFF4338CA);
+                message = ai.searchAssistWaitingLabel;
+              } else if (phase == AiSearchAssistPhase.error) {
+                bg = const Color(0xFFFEF2F2);
+                fg = const Color(0xFFB91C1C);
+                message = ai.searchAssistError.value;
+              } else {
+                bg = const Color(0xFFF0FDF4);
+                fg = const Color(0xFF047857);
+                message = 'Searching for “${ai.searchAssistQuery.value}”';
+              }
+
+              return Container(
+                width: double.infinity,
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                color: bg,
+                child: Text(
+                  message,
+                  style: TextStyle(fontSize: 12, color: fg, fontWeight: FontWeight.w600),
+                ),
+              );
+            }),
           // Content area
           Expanded(
             child: Obx(() {

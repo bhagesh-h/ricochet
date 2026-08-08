@@ -8,6 +8,8 @@ import '../services/docker_service.dart';
 import 'widgets/ricochet_logo.dart';
 import 'widgets/about_dialog.dart';
 import 'widgets/window_buttons.dart';
+import 'widgets/ai_status_pill.dart';
+import 'widgets/ai_generate_card.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // HomeScreen — root widget
@@ -60,6 +62,8 @@ class _TopBar extends StatelessWidget {
             // Brand mark
             const RicochetLogo(height: 20),
             const Spacer(),
+            const AiStatusPill(),
+            const SizedBox(width: 8),
             // Keyboard shortcut hint
             _TopBarButton(
               icon: Icons.settings_outlined,
@@ -455,6 +459,8 @@ class _RightPanelState extends State<_RightPanel> {
             style: TextStyle(fontSize: 13.5, color: Color(0xFF64748B)),
           ),
           const SizedBox(height: 32),
+
+          const AiGenerateCard(),
 
           // ── Blank pipeline card ────────────────────────────────────────────
           _BlankCard(onTap: Get.find<HomeController>().openBlankPipeline),

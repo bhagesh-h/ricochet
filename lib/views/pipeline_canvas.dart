@@ -7,6 +7,9 @@ import 'widgets/connection_painter.dart';
 import 'package:Ricochet/views/widgets/parameter_sidebar.dart';
 import '../controllers/pipeline_controller.dart';
 import '../controllers/execution_controller.dart';
+import '../controllers/ai_draft_controller.dart';
+import '../controllers/pipeline_tabs_controller.dart';
+import 'widgets/ai_ghost_block_widget.dart';
 import 'widgets/pipeline_block_widget.dart';
 
 class PipelineCanvas extends StatefulWidget {
@@ -150,6 +153,9 @@ class _PipelineCanvasState extends State<PipelineCanvas>
 
                           // Nodes
                           _buildNodes(controller),
+
+                          // AI draft ghosts (read-only previews)
+                          _buildGhostNodes(),
                         ],
                       ),
                     ),
@@ -159,7 +165,14 @@ class _PipelineCanvasState extends State<PipelineCanvas>
 
               // Empty-canvas welcome guide (pointer-transparent so DragTarget still works)
               Obx(() {
-                if (controller.nodes.isNotEmpty) return const SizedBox.shrink();
+                final hasGhosts = Get.isRegistered<AiDraftController>() &&
+                    Get.isRegistered<PipelineTabsController>() &&
+                    Get.find<AiDraftController>().ghostsForTab(
+                          Get.find<PipelineTabsController>().activeTabId.value ?? '',
+                        ).isNotEmpty;
+                if (controller.nodes.isNotEmpty || hasGhosts) {
+                  return const SizedBox.shrink();
+                }
                 return Positioned.fill(
                   child: IgnorePointer(
                     child: Center(
@@ -493,6 +506,46 @@ class _PipelineCanvasState extends State<PipelineCanvas>
     });
   }
 
+  Widget _buildGhostNodes() {
+    if (!Get.isRegistered<AiDraftController>() ||
+        !Get.isRegistered<PipelineTabsController>()) {
+      return const SizedBox.shrink();
+    }
+
+    final draft = Get.find<AiDraftController>();
+
+    return Obx(() {
+      final tabId =
+          Get.find<PipelineTabsController>().activeTabId.value ?? '';
+      final items = draft.ghostsForTab(tabId);
+      if (items.isEmpty) return const SizedBox.shrink();
+
+      return Stack(
+        children: items.map((ghost) {
+          final focused = draft.focusedGhostIndex.value == ghost.index;
+          return Positioned(
+            left: ghost.position.dx,
+            top: ghost.position.dy,
+            child: AiGhostBlockWidget(
+              ghost: ghost,
+              focused: focused,
+              onTap: () {
+                if (ghost.isSummary) {
+                  draft.focusSummaryGhost(ghost);
+                } else {
+                  draft.focusGhost(ghost.index);
+                }
+              },
+              onHover: () {
+                if (!ghost.isSummary) draft.focusGhost(ghost.index);
+              },
+            ),
+          );
+        }).toList(),
+      );
+    });
+  }
+
   Widget _buildNodeWidget(PipelineNode node) {
     return Positioned(
       left: node.position.dx,
@@ -563,13 +616,25 @@ class _PipelineCanvasState extends State<PipelineCanvas>
 
   void _fitToNodes() {
     final controller = Get.find<PipelineController>();
-    if (controller.nodes.isEmpty) {
+    final positions = controller.nodes.map((n) => n.position).toList();
+
+    if (Get.isRegistered<AiDraftController>() &&
+        Get.isRegistered<PipelineTabsController>()) {
+      final tabId = Get.find<PipelineTabsController>().activeTabId.value ?? '';
+      positions.addAll(
+        Get.find<AiDraftController>()
+            .ghostsForTab(tabId)
+            .map((g) => g.position),
+      );
+    }
+
+    if (positions.isEmpty) {
       _centerView();
       return;
     }
 
     final size = MediaQuery.of(context).size;
-    Rect nodeBounds = _calculateNodesBoundingBox(controller.nodes);
+    Rect nodeBounds = _calculatePositionsBoundingBox(positions);
 
     // Add some padding
     nodeBounds = nodeBounds.inflate(100);
@@ -588,20 +653,19 @@ class _PipelineCanvasState extends State<PipelineCanvas>
     _animateToMatrix(matrix);
   }
 
-  Rect _calculateNodesBoundingBox(List<PipelineNode> nodes) {
-    if (nodes.isEmpty) return Rect.zero;
+  Rect _calculatePositionsBoundingBox(List<Offset> positions) {
+    if (positions.isEmpty) return Rect.zero;
 
     double minX = double.infinity;
     double minY = double.infinity;
     double maxX = double.negativeInfinity;
     double maxY = double.negativeInfinity;
 
-    for (final node in nodes) {
-      minX = math.min(minX, node.position.dx);
-      minY = math.min(minY, node.position.dy);
-      // Assume node size is roughly 180x60
-      maxX = math.max(maxX, node.position.dx + 180);
-      maxY = math.max(maxY, node.position.dy + 60);
+    for (final position in positions) {
+      minX = math.min(minX, position.dx);
+      minY = math.min(minY, position.dy);
+      maxX = math.max(maxX, position.dx + 180);
+      maxY = math.max(maxY, position.dy + 60);
     }
 
     return Rect.fromLTRB(minX, minY, maxX, maxY);

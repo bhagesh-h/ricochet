@@ -2,6 +2,7 @@ import 'dart:io';
 import 'package:get/get.dart';
 import '../services/workspace_service.dart';
 import 'pipeline_tabs_controller.dart';
+import 'ai_draft_controller.dart';
 import '../models/pipeline_template.dart';
 import '../views/widgets/about_dialog.dart';
 
@@ -36,7 +37,12 @@ class HomeController extends GetxController {
   }
 
   /// Navigate back to the Home screen and refresh the Recent list.
-  void goHome() {
+  Future<void> goHome() async {
+    if (Get.isRegistered<AiDraftController>()) {
+      final allowed =
+          await Get.find<AiDraftController>().confirmLeaveIfNeeded();
+      if (!allowed) return;
+    }
     appView.value = AppView.home;
     loadRecent();
   }

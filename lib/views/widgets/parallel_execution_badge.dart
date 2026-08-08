@@ -27,9 +27,8 @@ class ParallelExecutionBadge extends StatelessWidget {
       final bg = active ? const Color(0xFF059669) : const Color(0xFF6366F1);
 
       return Tooltip(
-        message: SettingsController.parallelExecutionTooltip,
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 180),
+        message: SettingsController.parallelExecutionSummary,
+        child: Container(
           padding: EdgeInsets.symmetric(
             horizontal: compact ? 8 : 10,
             vertical: compact ? 4 : 5,

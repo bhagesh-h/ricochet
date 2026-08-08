@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:path/path.dart' as path;
 import 'package:Ricochet/models/node_execution_identity.dart';
 import 'package:Ricochet/services/workspace_service.dart';
 
@@ -91,6 +92,59 @@ void main() {
       expect(dir1.path, isNot(equals(dir2.path)));
       if (await dir1.exists()) await dir1.delete(recursive: true);
       if (await dir2.exists()) await dir2.delete(recursive: true);
+    });
+  });
+
+  // ── _moveDirectory — cross-device rename fallback ───────────────────────────
+  //
+  // finalizeNodeOutput() moves a staging dir (OS temp) into the workspace
+  // results folder. On real machines those can be on different drives
+  // (common on Windows with redirected/roaming Documents, or when %TEMP% is
+  // policy-redirected), which makes the plain Directory.rename() throw.
+  group('moveDirectoryForTest (cross-device move fallback)', () {
+    test('uses the fast path (rename) when source and destination are on the same volume', () async {
+      final source = Directory(path.join(testDir.path, 'src_rename'));
+      await source.create(recursive: true);
+      await File(path.join(source.path, 'result.txt')).writeAsString('hello');
+
+      final destination = Directory(path.join(testDir.path, 'dst_rename'));
+
+      await service.moveDirectoryForTest(source, destination);
+
+      expect(await source.exists(), isFalse);
+      expect(await destination.exists(), isTrue);
+      expect(
+        await File(path.join(destination.path, 'result.txt')).readAsString(),
+        'hello',
+      );
+    });
+
+    test('falls back to copy+delete when the destination parent does not exist yet '
+        '(simulating a rename failure such as a cross-device move)', () async {
+      final source = Directory(path.join(testDir.path, 'src_fallback'));
+      await source.create(recursive: true);
+      await File(path.join(source.path, 'a.txt')).writeAsString('one');
+      final nestedDir = Directory(path.join(source.path, 'nested'));
+      await nestedDir.create();
+      await File(path.join(nestedDir.path, 'b.txt')).writeAsString('two');
+
+      // A destination whose parent directory doesn't exist yet forces the
+      // underlying rename() to throw (ENOENT), exercising the same recovery
+      // path used for genuine cross-device rename failures.
+      final destination = Directory(
+        path.join(testDir.path, 'missing_parent', 'dst_fallback'),
+      );
+
+      await service.moveDirectoryForTest(source, destination);
+
+      expect(await source.exists(), isFalse,
+          reason: 'source should be cleaned up after a successful fallback copy');
+      expect(await destination.exists(), isTrue);
+      expect(await File(path.join(destination.path, 'a.txt')).readAsString(), 'one');
+      expect(
+        await File(path.join(destination.path, 'nested', 'b.txt')).readAsString(),
+        'two',
+      );
     });
   });
 
