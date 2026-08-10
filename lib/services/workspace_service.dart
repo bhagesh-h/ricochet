@@ -205,12 +205,42 @@ class WorkspaceService {
     
     final finalPath = path.join(baseDir.path, finalFolderName);
     final finalDir = Directory(finalPath);
-    
-    // Move staging to finalPath
-    await stagingDir.rename(finalDir.path);
+
+    // Move staging to finalPath. Prefer the atomic rename, but staging lives
+    // under the OS temp directory while the destination lives under the
+    // workspace (Documents) directory — on Windows those are frequently on
+    // different drives (e.g. redirected/roaming Documents, or a corporate
+    // %TEMP% policy), and on macOS/Linux they can differ too (Documents on a
+    // network share, external volume, etc.). A cross-device rename throws
+    // (errno 18 / "Invalid cross-device link"), so fall back to a manual
+    // copy + delete in that case instead of failing the whole run.
+    await _moveDirectory(stagingDir, finalDir);
     print('✅ New result version created for $nodeName: $finalPath');
     
     return finalPath;
+  }
+
+  /// Moves [source] to [destination]. Tries the fast atomic rename first;
+  /// if that fails (most commonly because they're on different
+  /// drives/volumes), falls back to copying the contents and then deleting
+  /// the source so the operation still succeeds.
+  @visibleForTesting
+  Future<void> moveDirectoryForTest(Directory source, Directory destination) =>
+      _moveDirectory(source, destination);
+
+  Future<void> _moveDirectory(Directory source, Directory destination) async {
+    try {
+      await source.rename(destination.path);
+      return;
+    } catch (e) {
+      print('⚠️ Directory rename failed (likely cross-volume), falling back to copy: $e');
+    }
+
+    if (!await destination.exists()) {
+      await destination.create(recursive: true);
+    }
+    await _copyDirectory(source, destination);
+    await source.delete(recursive: true);
   }
 
   /// Recursive directory copy helper using concurrent file copying

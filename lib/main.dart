@@ -8,7 +8,15 @@ import 'controllers/docker_controller.dart';
 import 'controllers/pipeline_tabs_controller.dart';
 import 'controllers/home_controller.dart';
 import 'controllers/settings_controller.dart';
+import 'controllers/ai_controller.dart';
+import 'controllers/ai_draft_controller.dart';
+import 'controllers/ai_review_controller.dart';
 import 'controllers/system_stats_controller.dart';
+import 'services/ai_telemetry_file_sink.dart';
+import 'services/ai_telemetry_service.dart';
+import 'services/ai_service.dart';
+import 'services/flutter_ai_secure_storage.dart';
+import 'services/resilient_ai_secure_storage.dart';
 import 'services/pipeline_tab_runtime_store.dart';
 import 'views/home_screen.dart';
 import 'views/settings_page.dart';
@@ -18,6 +26,10 @@ import 'views/widgets/execution_panel.dart';
 import 'views/widgets/docker_status_banner.dart';
 import 'views/widgets/pipeline_tab_bar.dart';
 import 'views/widgets/parallel_execution_badge.dart';
+import 'views/widgets/ai_status_pill.dart';
+import 'views/widgets/ai_generate_card.dart';
+import 'views/widgets/ai_pipeline_review_sheet.dart';
+import 'theme/ai_motion_tokens.dart';
 
 void main() async {
   // Initialize controllers before runApp
@@ -47,6 +59,34 @@ void main() async {
   // HomeController manages home ↔ editor navigation
   Get.put(HomeController());
   Get.put(SettingsController());
+
+  final telemetrySink = AiTelemetryFileSink();
+  final telemetry = AiTelemetryService(
+    isOptedIn: () {
+      if (!Get.isRegistered<AiController>()) return false;
+      return Get.find<AiController>().connectivity.value.telemetryOptIn;
+    },
+    sink: telemetrySink.record,
+  );
+
+  final aiService = AiService();
+
+  Get.put(
+    AiController(
+      secureStorage: ResilientAiSecureStorage(),
+      telemetryService: telemetry,
+      aiService: aiService,
+    ),
+    permanent: true,
+  );
+  Get.put(
+    AiDraftController(aiService: aiService, telemetryService: telemetry),
+    permanent: true,
+  );
+  Get.put(
+    AiReviewController(aiService: aiService, telemetryService: telemetry),
+    permanent: true,
+  );
   Get.put(SystemStatsController());
 
   runApp(const MyApp());
@@ -106,12 +146,30 @@ class _EditorScaffold extends StatelessWidget {
                 const PipelineTabBar(),
                 // Main content
                 Expanded(
-                  child: Row(
-                    children: const [
-                      ToolSidebar(),
-                      Expanded(child: PipelineCanvas()),
-                    ],
-                  ),
+                  child: Obx(() {
+                    final draft = Get.find<AiDraftController>();
+                    final tabs = Get.find<PipelineTabsController>();
+                    final showAiPanel = draft.showPanel.value &&
+                        draft.tabId.value.isNotEmpty &&
+                        draft.tabId.value == tabs.activeTabId.value;
+                    return Row(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        const ToolSidebar(),
+                        Expanded(child: PipelineCanvas()),
+                        AnimatedContainer(
+                          duration: AiMotionTokens.panelSlide,
+                          curve: Curves.easeOutCubic,
+                          width: showAiPanel ? AiPreviewPanel.width : 0,
+                          clipBehavior: Clip.hardEdge,
+                          decoration: const BoxDecoration(),
+                          child: showAiPanel
+                              ? const AiPreviewPanel()
+                              : const SizedBox.shrink(),
+                        ),
+                      ],
+                    );
+                  }),
                 ),
               ],
             ),
@@ -131,6 +189,8 @@ class _EditorScaffold extends StatelessWidget {
                 child: const ExecutionPanel(),
               );
             }),
+
+            const AiPipelineReviewSheet(),
 
             // Status Bar
             Positioned(
@@ -228,6 +288,8 @@ class _EditorScaffold extends StatelessWidget {
                       );
                     }),
                     const Spacer(),
+                    const AiStatusPill(compact: true),
+                    const SizedBox(width: 8),
                     const Text(
                       'Ricochet v1.0.0',
                       style:

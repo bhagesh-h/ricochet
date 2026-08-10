@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'package:flutter/foundation.dart';
 import 'package:get/get.dart';
 import 'package:http/http.dart' as http;
 import '../models/docker_image.dart';
@@ -204,7 +205,25 @@ class DockerSearchController extends GetxController {
     if (result.status != TagFetchStatus.success || result.tags.isEmpty) {
       return 'latest';
     }
+    if (result.tags.any((tag) => tag.name == 'latest')) {
+      return 'latest';
+    }
     return result.tags.first.name;
+  }
+
+  /// Best alternative tag when [excludeTag] is missing from the registry.
+  Future<String?> getFallbackTag(
+    String imageName, {
+    required String excludeTag,
+  }) async {
+    final result = await getImageTags(imageName, all: true);
+    if (result.status != TagFetchStatus.success || result.tags.isEmpty) {
+      return null;
+    }
+    for (final tag in result.tags) {
+      if (tag.name != excludeTag) return tag.name;
+    }
+    return null;
   }
 
   void clearSearch() {
@@ -215,5 +234,15 @@ class DockerSearchController extends GetxController {
 
   String getDockerRunCommand(String imageName, String tag) {
     return 'docker run --rm -it $imageName:$tag';
+  }
+
+  @visibleForTesting
+  void seedTagsForTest(String imageName, List<DockerTag> tags) {
+    final sorted = List<DockerTag>.from(tags)..sort(compareTags);
+    _tagCache[imageName] = TagCacheEntry(
+      tags: sorted,
+      fetchedAt: DateTime.now(),
+      isFullFetch: true,
+    );
   }
 }

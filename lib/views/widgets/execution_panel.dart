@@ -5,7 +5,9 @@ import 'package:get/get.dart';
 import '../../controllers/execution_controller.dart';
 import '../../controllers/pipeline_controller.dart';
 import '../../controllers/system_stats_controller.dart';
+import '../../controllers/ai_controller.dart';
 import '../../models/pipeline_node.dart';
+import 'ai_error_explain_card.dart';
 
 class ExecutionPanel extends StatefulWidget {
   const ExecutionPanel({Key? key}) : super(key: key);
@@ -19,6 +21,7 @@ class _ExecutionPanelState extends State<ExecutionPanel> {
   final PipelineController pipelineCtrl = Get.find();
   final SystemStatsController statsCtrl = Get.find();
   bool _isResizing = false;
+  Worker? _selectedNodeWorker;
 
   // Scroll controllers for auto-scroll
   final ScrollController _pipelineScrollCtrl = ScrollController();
@@ -36,6 +39,10 @@ class _ExecutionPanelState extends State<ExecutionPanel> {
     _nodeScrollCtrl.addListener(() => _onScroll(_nodeScrollCtrl));
 
     // Listen for pipeline start / stop to drive the elapsed timer.
+    _selectedNodeWorker = ever(pipelineCtrl.selectedNode, (id) {
+      if (id == null || !Get.isRegistered<AiController>()) return;
+      Get.find<AiController>().clearExplainIfNodeChanged(id);
+    });
     ever(execCtrl.isRunning, (bool running) {
       if (running) {
         _runStartTime = DateTime.now();
@@ -60,6 +67,7 @@ class _ExecutionPanelState extends State<ExecutionPanel> {
 
   @override
   void dispose() {
+    _selectedNodeWorker?.dispose();
     _elapsedTimer?.cancel();
     _pipelineScrollCtrl.dispose();
     _nodeScrollCtrl.dispose();
@@ -235,6 +243,18 @@ class _ExecutionPanelState extends State<ExecutionPanel> {
                       ),
 
                     // Open Output Folder
+                    if (showNodeLogs &&
+                        nodeHasExplainableError(selectedNode) &&
+                        Get.isRegistered<AiController>())
+                      Obx(() {
+                        final ai = Get.find<AiController>();
+                        return buildExplainErrorButton(
+                          node: selectedNode,
+                          enabled: ai.canSuggestCommand &&
+                              ai.explainPhase.value != AiExplainPhase.streaming,
+                        );
+                      }),
+
                     if (showNodeLogs) ...[
                       TextButton.icon(
                         onPressed: () => pipelineCtrl.openOutputDirectory(),
@@ -421,6 +441,8 @@ class _ExecutionPanelState extends State<ExecutionPanel> {
                   ],
                 ),
               ),
+
+              if (showNodeLogs) AiErrorExplainCard(node: selectedNode),
 
               // Content
               Expanded(

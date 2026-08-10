@@ -26,17 +26,17 @@ class SettingsController extends GetxController {
   final isLoading = true.obs;
   final Set<String> _activeParallelRunTabs = {};
 
-  static const String parallelExecutionTooltip =
-      'Runs independent pipeline branches at the same time when their '
-      'upstream dependencies are satisfied. Nodes that depend on each other '
-      'still run in order. Ricochet limits concurrent Docker containers based '
-      'on your setting and this machine\'s CPU threads. Works with Docker '
-      'Desktop on macOS and Windows.';
+  static const String parallelExecutionSummary =
+      'Run independent branches at the same time when their dependencies '
+      'are satisfied. Nodes that depend on each other still run in order.';
 
-  static const String maxParallelJobsTooltip =
-      'Maximum Docker containers Ricochet will run at once during a parallel '
-      'wave. Default is 2. The limit is automatically reduced if your CPU '
-      'cannot safely support more.';
+  static String parallelExecutionPlatformNote(String platform) =>
+      'Requires Docker Desktop on $platform. Concurrent containers are '
+      'capped by your max-jobs setting and CPU threads.';
+
+  static const String maxParallelJobsSummary =
+      'Maximum Docker containers Ricochet runs at once during a parallel '
+      'wave. Automatically reduced if your CPU cannot safely support more.';
 
   @override
   void onInit() {
@@ -61,10 +61,10 @@ class SettingsController extends GetxController {
     return effectiveParallelCap.value;
   }
 
-  AppSettings get _snapshotSettings => AppSettings(
-        parallelExecutionEnabled: parallelExecutionEnabled.value,
-        maxParallelJobs: maxParallelJobs.value,
-      );
+  Future<void> _saveParallelSettings(AppSettings Function(AppSettings) merge) async {
+    final current = await _settingsService.load();
+    await _settingsService.save(merge(current));
+  }
 
   Future<void> _loadSettings() async {
     isLoading.value = true;
@@ -79,8 +79,8 @@ class SettingsController extends GetxController {
     final previous = parallelExecutionEnabled.value;
     parallelExecutionEnabled.value = enabled;
     try {
-      await _settingsService.save(
-        _snapshotSettings.copyWith(parallelExecutionEnabled: enabled),
+      await _saveParallelSettings(
+        (current) => current.copyWith(parallelExecutionEnabled: enabled),
       );
     } catch (_) {
       parallelExecutionEnabled.value = previous;
@@ -97,8 +97,8 @@ class SettingsController extends GetxController {
     maxParallelJobs.value = clamped;
     _refreshEffectiveCap();
     try {
-      await _settingsService.save(
-        _snapshotSettings.copyWith(maxParallelJobs: clamped),
+      await _saveParallelSettings(
+        (current) => current.copyWith(maxParallelJobs: clamped),
       );
     } catch (_) {
       maxParallelJobs.value = previous;

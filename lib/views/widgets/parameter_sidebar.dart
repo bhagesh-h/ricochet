@@ -7,8 +7,10 @@ import 'package:path/path.dart' as p;
 import 'package:Ricochet/models/pipeline_node.dart';
 import '../../controllers/pipeline_controller.dart';
 import '../../controllers/docker_search_controller.dart';
+import '../../controllers/ai_controller.dart';
 import '../../services/workspace_service.dart';
 import '../../models/docker_image.dart';
+import 'ai_command_suggest_panel.dart';
 import 'dart:io';
 import 'dart:convert';
 
@@ -36,6 +38,9 @@ class _ParameterSidebarState extends State<ParameterSidebar> {
   void initState() {
     super.initState();
     controller = Get.find<PipelineController>();
+    if (Get.isRegistered<AiController>()) {
+      Get.find<AiController>().clearCommandSuggestIfNodeChanged(widget.node.id);
+    }
   }
 
   @override
@@ -752,6 +757,7 @@ class _ParameterSidebarState extends State<ParameterSidebar> {
   Widget _buildCommandInput(BlockParameter param) {
     final tCtrl = _ctrlFor(param.key, param.value?.toString());
     final example = _exampleCommandFor(widget.node.dockerImage ?? '');
+    final ai = Get.isRegistered<AiController>() ? Get.find<AiController>() : null;
 
     void insertVar(String variable) {
       final sel = tCtrl.selection;
@@ -772,6 +778,37 @@ class _ParameterSidebarState extends State<ParameterSidebar> {
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            Row(
+              children: [
+                const Expanded(
+                  child: Text(
+                    'Command',
+                    style: TextStyle(
+                      fontSize: 12.5,
+                      fontWeight: FontWeight.w700,
+                      color: Color(0xFF475569),
+                    ),
+                  ),
+                ),
+                if (ai != null)
+                  Obx(
+                    () => buildAiSuggestChip(
+                      enabled: ai.canSuggestCommand &&
+                          ai.commandPhase.value !=
+                              AiCommandSuggestPhase.streaming,
+                      truncated: ai.commandTruncated.value,
+                      onTap: () => ai.suggestCommand(
+                        node: widget.node,
+                        paramKey: param.key,
+                        partialCommand: tCtrl.text,
+                        allNodes: controller.nodes.toList(),
+                        connections: controller.connections.toList(),
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+            const SizedBox(height: 6),
             // ── Info banner (only when command is empty) ──────────────────
             if (nowEmpty) ...[
               Container(
@@ -883,7 +920,34 @@ class _ParameterSidebarState extends State<ParameterSidebar> {
                 if (nowEmpty != value.trim().isEmpty) localSetState(() {});
               },
             ),
-            const SizedBox(height: 8),
+
+            AiCommandSuggestPanel(
+              nodeId: widget.node.id,
+              paramKey: param.key,
+              partialCommand: tCtrl.text,
+              onAccept: () {
+                final proposed = ai?.commandProposed.value ?? '';
+                if (proposed.isEmpty) return;
+                tCtrl.text = proposed;
+                controller.updateNodeParameter(
+                  widget.node.id,
+                  param.key,
+                  proposed,
+                );
+                ai?.trackCommandAccepted();
+                ai?.discardCommandSuggestion();
+                localSetState(() {});
+              },
+              onRegenerate: () {
+                ai?.regenerateCommand(
+                  node: widget.node,
+                  paramKey: param.key,
+                  partialCommand: tCtrl.text,
+                  allNodes: controller.nodes.toList(),
+                  connections: controller.connections.toList(),
+                );
+              },
+            ),
 
             // ── Dynamic variable chips (connection-aware) ──────────────────
             _buildDynamicInputChips(insertVar),

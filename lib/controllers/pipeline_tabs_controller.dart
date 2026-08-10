@@ -12,6 +12,7 @@ import '../services/pipeline_tab_runtime_store.dart';
 import 'pipeline_controller.dart';
 import 'execution_controller.dart';
 import 'home_controller.dart';
+import 'ai_draft_controller.dart';
 
 class PipelineTabsController extends GetxController {
   final WorkspaceService _workspaceService = WorkspaceService();
@@ -73,7 +74,7 @@ class PipelineTabsController extends GetxController {
     final id = const Uuid().v4();
     final folderName = 'Untitled_Pipeline_${tabs.length + 1}';
     final folderPath = await _workspaceService.createPipelineFolder(folderName);
-    
+
     final newTab = PipelineFile(
       id: id,
       name: folderName,
@@ -81,6 +82,56 @@ class PipelineTabsController extends GetxController {
     );
     tabs.add(newTab);
     switchTab(id);
+  }
+
+  /// Creates a blank tab and activates it synchronously (no async disk-load race).
+  ///
+  /// Used by AI generate-from-home so streamed draft nodes are not wiped by an
+  /// empty [switchTab] → `_loadTabFromDisk` callback on the next event-loop tick.
+  Future<String> createNewTabForGenerate() async {
+    final id = const Uuid().v4();
+    final folderName = 'Untitled_Pipeline_${tabs.length + 1}';
+    final folderPath = await _workspaceService.createPipelineFolder(folderName);
+
+    final newTab = PipelineFile(
+      id: id,
+      name: folderName,
+      folderPath: folderPath,
+    );
+    tabs.add(newTab);
+
+    final prevTab = currentPipeline;
+    if (prevTab != null) {
+      final pipelineCtrl = Get.find<PipelineController>();
+      if (Get.isRegistered<PipelineTabRuntimeStore>()) {
+        final store = Get.find<PipelineTabRuntimeStore>();
+        store.ensureTab(prevTab);
+        store.captureActiveCanvas(prevTab.id, pipelineCtrl);
+      }
+      pipelineCtrl.saveStateToPipelineFile(prevTab);
+      _autoSaveTimer?.cancel();
+      _saveActiveTabToDisk();
+    }
+
+    activeTabId.value = id;
+
+    final pipelineCtrl = Get.find<PipelineController>();
+    pipelineCtrl.prepareEmptyTab(id);
+    newTab.nodes = [];
+    newTab.connections = [];
+
+    if (Get.isRegistered<PipelineTabRuntimeStore>()) {
+      final store = Get.find<PipelineTabRuntimeStore>();
+      store.ensureTab(newTab);
+      store.captureActiveCanvas(id, pipelineCtrl);
+    }
+
+    pipelineCtrl.saveStateToPipelineFile(newTab);
+    final filePath = p.join(newTab.folderPath, 'pipeline.json');
+    await File(filePath).writeAsString(jsonEncode(newTab.toJson()));
+    newTab.hasUnsavedChanges = false;
+    tabs.refresh();
+    return id;
   }
 
   void triggerAutoSave() {
@@ -205,7 +256,18 @@ class PipelineTabsController extends GetxController {
     final tab = tabs.firstWhereOrNull((t) => t.id == id);
     if (tab == null) return;
 
-    void _doClose() {
+    Future<void> _doClose() async {
+      if (Get.isRegistered<AiDraftController>()) {
+        final draft = Get.find<AiDraftController>();
+        // Only prompt when we're closing the tab that owns the active draft.
+        if (draft.tabId.value == id && draft.needsExitConfirm()) {
+          final allowed = await draft.confirmLeaveIfNeeded();
+          if (!allowed) return;
+        } else if (draft.tabId.value == id && draft.showPanel.value) {
+          draft.closePanel(force: true);
+        }
+      }
+
       tabs.removeWhere((t) => t.id == id);
       if (tabs.isEmpty) {
         activeTabId.value = null;
@@ -234,19 +296,19 @@ class PipelineTabsController extends GetxController {
               if (await dir.exists()) {
                 await dir.delete(recursive: true); // physically delete so it won't show on restart
               }
-              _doClose();
+              await _doClose();
             },
             child: const Text('Discard', style: TextStyle(color: Colors.white)),
           ),
           ElevatedButton(
             style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF6366F1)),
-            onPressed: () {
+            onPressed: () async {
               Navigator.of(context).pop();
               // Auto-save logic already persists it, but we can enforce it:
               if (activeTabId.value == id) {
                 _saveActiveTabToDisk();
               }
-              _doClose();
+              await _doClose();
             },
             child: const Text('Save & Close', style: TextStyle(color: Colors.white)),
           ),

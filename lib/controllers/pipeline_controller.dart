@@ -18,6 +18,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import '../utils/shell_utils.dart';
+import '../utils/docker_image_utils.dart';
 import 'package:path/path.dart' as path;
 
 class PipelineController extends GetxController {
@@ -195,20 +196,14 @@ class PipelineController extends GetxController {
       
       // If no tag is provided, default to 'latest' temporarily but trigger auto-discovery
       final initialTag = providedTag ?? 'latest';
-      final node = _createDockerNode(imageName, position, tag: initialTag);
-      
-      // Mark as auto-selected initially so _resolveSmartTag can overwrite it
-      if (providedTag == null) {
-         final tagParam = node.parameters.firstWhereOrNull((p) => p.key == 'tag');
-         if (tagParam != null) tagParam.isAuto = true;
-      }
-      
+      final node = _createDockerNode(
+        imageName,
+        position,
+        tag: initialTag,
+        autoResolveTag: providedTag == null,
+      );
+
       nodes.add(node);
-      
-      // Asynchronously find the "smart" default tag if not provided
-      if (providedTag == null) {
-        _resolveSmartTag(node.id, imageName);
-      }
     } else {
       final node = _createNodeFromType(nodeType, position);
       nodes.add(node);
@@ -567,6 +562,7 @@ class PipelineController extends GetxController {
     String imageName,
     Offset position, {
     String tag = 'latest',
+    bool autoResolveTag = false,
   }) {
     final id = const Uuid().v4();
 
@@ -623,8 +619,15 @@ class PipelineController extends GetxController {
       ],
     );
 
-    // Check and pull image asynchronously
-    _checkAndPullImage(node);
+    if (autoResolveTag || tag == 'latest') {
+      final tagParam = node.parameters.firstWhereOrNull((p) => p.key == 'tag');
+      if (tagParam != null) {
+        tagParam.isAuto = true;
+      }
+      _resolveSmartTag(node.id, imageName);
+    } else {
+      _checkAndPullImage(node);
+    }
 
     return node;
   }
@@ -709,52 +712,103 @@ class PipelineController extends GetxController {
     if (fullImage.isEmpty) return;
 
     try {
-      // Check if image exists locally
       final exists = await _dockerService.imageExists(fullImage);
 
       if (exists) {
-        // Image is cached
         node.status = BlockStatus.ready;
         node.isImageLocal = true;
         node.failureScope = NodeFailureScope.none;
         node.downloadStatus = 'Image ready';
         update();
         print('✅ Image ${node.dockerImage} is already cached');
-      } else {
-        // Need to pull image
-        node.status = BlockStatus.downloading;
-        node.downloadProgress = 0.0;
-        node.failureScope = NodeFailureScope.none;
-        node.downloadStatus = 'Starting download...';
-        update([node.id]); // Update only this node
+        return;
+      }
 
-        print('📥 Pulling image $fullImage...');
-
-        // Listen to pull progress stream
-        await for (final progress in _dockerService.pullImage(
-          fullImage,
-        )) {
-          node.downloadProgress = progress.percentage;
-          node.downloadStatus = progress.message;
-
-          if (progress.status == PullStatus.complete) {
-            node.status = BlockStatus.ready;
-            node.isImageLocal = true;
-            node.failureScope = NodeFailureScope.none;
-          } else if (progress.status == PullStatus.error) {
-            node.status = BlockStatus.error;
-            node.failureScope = NodeFailureScope.imagePull;
-          }
-
-          update([node.id]); // Update only this node
-        }
+      final pulled = await _pullImageWithProgress(node, fullImage);
+      if (!pulled &&
+          isDockerImageNotFoundError(node.downloadStatus ?? '')) {
+        await _retryPullWithFallbackTag(node);
       }
     } catch (e) {
       node.status = BlockStatus.error;
       node.failureScope = NodeFailureScope.imagePull;
       node.downloadStatus = 'Error: $e';
-      update([node.id]); // Update only this node
+      update([node.id]);
     }
+  }
+
+  String _nodeTag(PipelineNode node) {
+    final tagParam = node.parameters.firstWhereOrNull((p) => p.key == 'tag');
+    return tagParam?.value?.toString().trim() ?? 'latest';
+  }
+
+  void _setNodeTag(
+    PipelineNode node,
+    String tag, {
+    required bool autoSelected,
+  }) {
+    final tagParam = node.parameters.firstWhereOrNull((p) => p.key == 'tag');
+    if (tagParam == null) return;
+    tagParam.value = tag;
+    tagParam.isAuto = autoSelected;
+  }
+
+  Future<bool> _pullImageWithProgress(
+    PipelineNode node,
+    String fullImage,
+  ) async {
+    node.status = BlockStatus.downloading;
+    node.downloadProgress = 0.0;
+    node.failureScope = NodeFailureScope.none;
+    node.downloadStatus = 'Starting download...';
+    update([node.id]);
+
+    print('📥 Pulling image $fullImage...');
+
+    var success = false;
+    await for (final progress in _dockerService.pullImage(fullImage)) {
+      node.downloadProgress = progress.percentage;
+      node.downloadStatus = progress.message;
+
+      if (progress.status == PullStatus.complete) {
+        node.status = BlockStatus.ready;
+        node.isImageLocal = true;
+        node.failureScope = NodeFailureScope.none;
+        success = true;
+      } else if (progress.status == PullStatus.error) {
+        node.status = BlockStatus.error;
+        node.failureScope = NodeFailureScope.imagePull;
+        success = false;
+      }
+
+      update([node.id]);
+    }
+    return success;
+  }
+
+  Future<void> _retryPullWithFallbackTag(PipelineNode node) async {
+    if (!Get.isRegistered<DockerSearchController>()) return;
+    final image = node.dockerImage;
+    if (image == null) return;
+
+    final currentTag = _nodeTag(node);
+    final searchCtrl = Get.find<DockerSearchController>();
+    final fallback = await searchCtrl.getFallbackTag(
+      image,
+      excludeTag: currentTag,
+    );
+    if (fallback == null || fallback == currentTag) return;
+
+    _setNodeTag(node, fallback, autoSelected: true);
+    node.downloadStatus =
+        'Tag "$currentTag" unavailable — trying "$fallback"...';
+    node.downloadProgress = 0.0;
+    node.status = BlockStatus.downloading;
+    update([node.id]);
+
+    final fullImage = getFullImageName(node);
+    print('📥 Retrying pull with fallback tag: $fullImage');
+    await _pullImageWithProgress(node, fullImage);
   }
 
   /// Retry downloading a Docker image for a node
@@ -1707,6 +1761,19 @@ class PipelineController extends GetxController {
     _saveHistoryState();
   }
 
+  /// Clears the canvas for a new tab without scheduling an async disk load.
+  void prepareEmptyTab(String tabId) {
+    _currentTabId = tabId;
+    _undoStacks.putIfAbsent(tabId, () => []);
+    _redoStacks.putIfAbsent(tabId, () => []);
+    nodes.clear();
+    connections.clear();
+    selectedNode.value = null;
+    selectedConnectionId.value = null;
+    cycleConnectionIds.clear();
+    _saveHistoryState();
+  }
+
   void setNodeStatus(String id, BlockStatus status) {
     final node = nodes.firstWhereOrNull((n) => n.id == id);
     if (node != null) {
@@ -1761,25 +1828,7 @@ class PipelineController extends GetxController {
 
     final createdNodes = <PipelineNode>[];
     for (final def in template.nodes) {
-      final PipelineNode node;
-      if (def.nodeType.startsWith('docker:')) {
-        final fullName = def.nodeType.substring(7);
-        final colonIdx = fullName.indexOf(':');
-        final imageName =
-            colonIdx >= 0 ? fullName.substring(0, colonIdx) : fullName;
-        final tag =
-            colonIdx >= 0 ? fullName.substring(colonIdx + 1) : 'latest';
-        node = _createDockerNode(imageName, def.position, tag: tag);
-      } else {
-        node = _createNodeFromType(def.nodeType, def.position);
-      }
-      for (final entry in def.parameterOverrides.entries) {
-        final param =
-            node.parameters.firstWhereOrNull((p) => p.key == entry.key);
-        if (param != null) param.value = entry.value;
-      }
-      nodes.add(node);
-      createdNodes.add(node);
+      createdNodes.add(addNodeFromTemplateDef(def, saveHistory: false));
     }
 
     for (final conn in template.connections) {
@@ -1804,5 +1853,37 @@ class PipelineController extends GetxController {
     // Signal the canvas to fit the view so the user sees all template nodes
     // immediately without having to click "Fit Workflow" manually.
     fitViewRequest.value++;
+  }
+
+  /// Creates a single node from a template definition and adds it to the canvas.
+  PipelineNode addNodeFromTemplateDef(
+    TemplateNodeDef def, {
+    bool saveHistory = true,
+  }) {
+    final PipelineNode node;
+    if (def.nodeType.startsWith('docker:')) {
+      final fullName = def.nodeType.substring(7);
+      final colonIdx = fullName.indexOf(':');
+      final imageName =
+          colonIdx >= 0 ? fullName.substring(0, colonIdx) : fullName;
+      final tag =
+          colonIdx >= 0 ? fullName.substring(colonIdx + 1) : 'latest';
+      node = _createDockerNode(
+        imageName,
+        def.position,
+        tag: tag,
+        autoResolveTag: tag == 'latest',
+      );
+    } else {
+      node = _createNodeFromType(def.nodeType, def.position);
+    }
+    for (final entry in def.parameterOverrides.entries) {
+      final param =
+          node.parameters.firstWhereOrNull((p) => p.key == entry.key);
+      if (param != null) param.value = entry.value;
+    }
+    nodes.add(node);
+    if (saveHistory) _saveHistoryState();
+    return node;
   }
 }

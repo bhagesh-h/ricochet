@@ -49,87 +49,276 @@ Think of it as **"n8n meets Galaxy"** - combining the beautiful drag-and-drop in
 ### High-Level Architecture
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│                     Ricochet Desktop App                     │
-│                      (Flutter / Dart)                       │
-├─────────────────────────────────────────────────────────────┤
-│                                                             │
-│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐     │
-│  │   Canvas     │  │  Sidebar     │  │  Execution   │     │
-│  │   (Nodes +   │  │  (Docker     │  │  Panel       │     │
-│  │  Connections)│  │   Images)    │  │  (Logs)      │     │
-│  └──────────────┘  └──────────────┘  └──────────────┘     │
-│                                                             │
-├─────────────────────────────────────────────────────────────┤
-│                    Controller Layer                         │
-│  ┌──────────────────┐  ┌──────────────────┐               │
-│  │ PipelineController│  │ExecutionController│              │
-│  │  (State Mgmt)    │  │  (Orchestration)  │              │
-│  └──────────────────┘  └──────────────────┘               │
-├─────────────────────────────────────────────────────────────┤
-│                     Service Layer                           │
-│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐     │
-│  │ DockerService│  │  Workspace   │  │   Storage    │     │
-│  │   (CLI API)  │  │   Service    │  │   Service    │     │
-│  └──────────────┘  └──────────────┘  └──────────────┘     │
-└─────────────────────────────────────────────────────────────┘
-                            ↓
-        ┌───────────────────────────────────────┐
-        │        Docker Engine (Local)          │
-        ├───────────────────────────────────────┤
-        │  Container 1  │  Container 2  │  ... │
-        │  (python)     │  (alpine)     │      │
-        └───────────────────────────────────────┘
-                            ↓
-        ┌───────────────────────────────────────┐
-        │      Ricochet Workspace Directory      │
-        │   ~/Documents/Ricochet_workspace/      │
-        │                                       │
-        │   run_2025-12-04T10-30-15/           │
-        │   ├── node1_alpine/output.txt        │
-        │   ├── node2_python/output.txt        │
-        │   └── node3_gatk/variants.vcf        │
-        └───────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────────┐
+│                      Ricochet Desktop App                       │
+│                       (Flutter / Dart)                          │
+│                  (Frameless window_manager)                     │
+├──────────────────────┬──────────────────────────────────────────┤
+│    Home Screen       │            Editor Scaffold               │
+│  ┌───────────────┐   │  ┌──────────────────────────────────┐   │
+│  │ Recent        │   │  │  Multi-Tab Bar (Chrome-style)    │   │
+│  │ Pipelines     │   │  └──────────────────────────────────┘   │
+│  │ Sidebar       │   │  ┌────────────────────┬─────────────┐   │
+│  ├───────────────┤   │  │ Tool Sidebar       │ Canvas      │   │
+│  │ Template      │   │  │ (Built-in Blocks   │ (Nodes +    │   │
+│  │ Gallery       │   │  │  + Docker Hub      │ Connections)│   │
+│  │ (5 curated    │   │  │  Search)           │             │   │
+│  │  templates +  │   │  ├────────────────────┴─────────────┤   │
+│  │  category     │   │  │ Execution Console (slide-up panel│   │
+│  │  filter)      │   │  │ per-tab logs, resize handle)     │   │
+│  └───────────────┘   │  └──────────────────────────────────┘   │
+│                      │  ┌──────────────────────────────────┐   │
+│                      │  │ Status Bar (Docker, CPU, GPU,    │   │
+│                      │  │ Disk — live 4-second polling)    │   │
+│                      │  └──────────────────────────────────┘   │
+├──────────────────────┴──────────────────────────────────────────┤
+│                       Controller Layer (GetX)                   │
+│  ┌──────────────────┐  ┌────────────────────┐                  │
+│  │PipelineController│  │ExecutionController │                  │
+│  │ - nodes/conns    │  │ - orchestration    │                  │
+│  │ - undo/redo      │  │ - per-tab logs     │                  │
+│  │ - topo sort      │  │ - heartbeat timer  │                  │
+│  │ - image pull     │  └────────────────────┘                  │
+│  │ - export/import  │  ┌────────────────────┐                  │
+│  └──────────────────┘  │  DockerController  │                  │
+│  ┌──────────────────┐  │  (Docker daemon    │                  │
+│  │PipelineTabsCtrl  │  │   status / banner) │                  │
+│  │ - tab lifecycle  │  └────────────────────┘                  │
+│  │ - auto-save      │  ┌────────────────────┐                  │
+│  │ - session restore│  │DockerSearchCtrl    │                  │
+│  └──────────────────┘  │ - Hub API search   │                  │
+│  ┌──────────────────┐  │ - LRU tag cache    │                  │
+│  │  HomeController  │  │ - smart tag resolve│                  │
+│  │ - app navigation │  │ - deduplication    │                  │
+│  │ - recent list    │  └────────────────────┘                  │
+│  └──────────────────┘  ┌────────────────────┐                  │
+│  ┌──────────────────┐  │SystemStatsController│                 │
+│  │  (Template       │  │ - CPU/GPU/Disk poll │                 │
+│  │   loading via    │  │ - per-platform cmds │                 │
+│  │ PipelineCtrl)    │  │ - 4-second interval │                 │
+│  └──────────────────┘  └────────────────────┘                  │
+├─────────────────────────────────────────────────────────────────┤
+│                        Service Layer                            │
+│  ┌──────────────────┐  ┌──────────────────┐                    │
+│  │  DockerService   │  │  WorkspaceService│                    │
+│  │ - executable     │  │ - pipeline dirs  │                    │
+│  │   discovery      │  │ - staging (OS    │                    │
+│  │ - pull progress  │  │   temp dir)      │                    │
+│  │ - runContainer   │  │ - finalize +     │                    │
+│  │ - stopContainer  │  │   deduplication  │                    │
+│  │ - process map    │  │ - export ZIPs    │                    │
+│  │ - killAll        │  │ - import round-  │                    │
+│  └──────────────────┘  │   trip           │                    │
+│  ┌──────────────────┐  └──────────────────┘                    │
+│  │ComposeExportSvc  │  ┌──────────────────┐                    │
+│  │ - docker-compose │  │DirectoryHashing  │                    │
+│  │   YAML generator │  │   Service        │                    │
+│  │ - env file gen   │  │ - recursive MD5  │                    │
+│  │ - RICOCHET_STATE │  │   fingerprinting │                    │
+│  │   Base64 embed   │  └──────────────────┘                    │
+│  └──────────────────┘  ┌──────────────────┐                    │
+│                        │  ProcessRunner   │                    │
+│                        │  (abstract iface)│                    │
+│                        │ - timeout + kill │                    │
+│                        │ - SIGTERM →      │                    │
+│                        │   SIGKILL        │                    │
+│                        │ - injectable for │                    │
+│                        │   tests          │                    │
+│                        └──────────────────┘                    │
+└─────────────────────────────────────────────────────────────────┘
+                              ↓
+         ┌───────────────────────────────────────┐
+         │        Docker Engine (Local)          │
+         ├───────────────────────────────────────┤
+         │  Container 1  │  Container 2  │  ... │
+         │  (FastQC)     │  (Trimmomatic)│      │
+         └───────────────────────────────────────┘
+                              ↓
+         ┌─────────────────────────────────────────────────┐
+         │      Ricochet Workspace (OS Documents dir)      │
+         │                                                 │
+         │  Pipelines/                                     │
+         │  ├── My_RNA_Seq/                                │
+         │  │   ├── pipeline_<timestamp>.json              │
+         │  │   ├── FastQC_<timestamp>/         ← deduped  │
+         │  │   │   └── output.txt                         │
+         │  │   └── Trimmomatic_<timestamp>/               │
+         │  └── Variant_Calling/                           │
+         │      └── pipeline_<timestamp>.json              │
+         │  exports/                                       │
+         │  └── MyPipeline_export_<timestamp>.zip          │
+         │                                                 │
+         │  (Staging: OS temp dir — cleaned up on success) │
+         └─────────────────────────────────────────────────┘
 ```
 
 ### Component Breakdown
 
 #### 1. **Frontend Layer (Flutter)**
-- **Technology**: Flutter 3.x, Dart 3.x
+- **Technology**: Flutter 3.x, Dart 3.x, `window_manager` (frameless, custom title bar)
 - **Purpose**: Cross-platform desktop UI (macOS, Windows, Linux)
+- **Key Views**:
+  - `HomeScreen`: Landing page with Recent Pipelines sidebar + Template Gallery; animated transition to Editor
+  - `EditorScaffold`: Multi-tab canvas, tool sidebar, execution console, status bar
+  - `PipelineCanvas`: Infinite pan/zoom canvas with Bezier connections and cycle highlighting
+  - `ParameterSidebar`: Horizontally resizable (280–700 px) node configuration panel
+  - `ExecutionPanel`: Slide-up log console with per-tab isolated log streams
 - **Key Features**:
-  - Infinite canvas with pan/zoom
+  - Infinite canvas with smooth pan/zoom
   - Drag-and-drop node creation
   - Visual connection drawing (Bezier curves)
   - Real-time log streaming
-  - Dark mode support
+  - Frameless custom title bar with OS-native window controls
 
 #### 2. **State Management (GetX)**
-- **Technology**: GetX 4.x (reactive state management)
+- **Technology**: GetX 4.x (reactive state management, no boilerplate)
 - **Controllers**:
-  - `PipelineController`: Manages nodes, connections, selection
-  - `ExecutionController`: Orchestrates pipeline execution
-  - `DockerController`: Manages Docker image library
+
+  | Controller | Responsibilities |
+  |-----------|-----------------|
+  | `PipelineController` | Nodes, connections, undo/redo per tab, image pull, topological sort, export/import, template loading |
+  | `ExecutionController` | Pipeline orchestration loop, per-tab log buffers, heartbeat timer, stop logic |
+  | `DockerController` | Docker daemon status, platform detection (Apple Silicon notice) |
+  | `DockerSearchController` | Docker Hub search, LRU tag cache, smart tag resolution, request deduplication |
+  | `PipelineTabsController` | Tab lifecycle, 2-second debounce auto-save, session restore, rename |
+  | `HomeController` | Home ↔ Editor navigation, recent pipeline list loading |
+  | `SystemStatsController` | CPU/GPU/Disk polling every 4 seconds per platform |
 
 #### 3. **Docker Integration**
-- **Technology**: Docker CLI via Dart `Process` API
+- **Technology**: Docker CLI via Dart `Process` API (through `ProcessRunner` abstraction)
 - **Capabilities**:
-  - Image search and pull (with progress tracking)
-  - Container lifecycle management (run, stop, kill)
-  - Volume mounting for data flow
-  - Environment variable injection
-  - Real-time stdout/stderr streaming
+  - Executable auto-discovery (Intel Mac, Apple Silicon, Windows, Linux paths, Snap)
+  - Image search and pull with **layer-by-layer progress** (regex parsing of Docker pull output)
+  - Container lifecycle management: run, stop (SIGKILL), kill-all emergency stop
+  - Volume mounting for data flow: read-only input mounts + read-write output mounts
+  - Environment variable injection: `INPUT_FILE`, `INPUT_FILE_N`, `INPUT_DIR`, `OUTPUT_DIR`
+  - Real-time stdout/stderr streaming via Dart stream transformers
+  - `_activeProcesses` map for reliable cleanup of both pull and run processes
+  - Platform-aware `DOCKER_HOST` and `DOCKER_CONFIG` injection for sandboxed macOS apps
 
 #### 4. **Execution Engine**
-- **Topological Sorting**: Kahn's algorithm for dependency resolution
-- **Data Flow**: Output files from Node A → Input mounts for Node B
-- **Error Handling**: Cycle detection, graceful failure, pipeline stopping
-- **Logging**: Structured logs (STDOUT, STDERR, SYSTEM messages)
+- **Topological Sorting**: Kahn's algorithm for dependency resolution (raises on cycle)
+- **Cycle Detection**: Separate DFS-based `getCycleConnections()` highlights problematic edges in red on the canvas
+- **Data Flow**: Output directories from Node A → read-only `/inputs/` volume mounts in Node B
+- **Variable Expressions**: `NodeTitle.out` / `NodeTitle.in_N` resolved to container paths at runtime
+- **Container timeout**: Hard 120-minute kill with descriptive error logs
+- **Stream drain**: 30-second timeout after process exit to capture residual buffered output
+- **Error Handling**: Failure scopes (`imagePull`, `execution`, `configuration`, `canceled`) with targeted recovery UI
+- **Logging**: Structured messages — `[STDOUT]`, `[STDERR]`, `[SYSTEM]`, `[ERROR]`, `[WARNING]`
+- **Heartbeat**: Logs elapsed time every 10 seconds for long-running containers
 
-#### 5. **Workspace System**
-- **Structure**: Timestamped runs, node-specific output directories
-- **File Management**: Automatic cleanup, path resolution
-- **Data Provenance**: Full lineage tracking (which node produced which file)
+#### 5. **Workspace System & Smart Deduplication**
+
+The workspace system is content-addressed — identical outputs are never written twice.
+
+**Execution flow for each node:**
+
+```
+1. Create staging directory in OS temp:
+   /tmp/ricochet_staging_<NodeName>_<timestamp>/
+
+2. Run Docker container → output.txt written to staging
+
+3. After process exits, compute MD5 hash of staging directory:
+   DirectoryHashingService.calculateDirectoryHash()
+   → sorted recursive hash of all files (path + content)
+
+4. Compare with all existing result versions for this node:
+   Pipelines/<name>/<NodeName>_*/.ricochet_hash
+
+5a. Hash match found → reuse existing folder, delete staging
+    (identical results from a previous run)
+
+5b. No match → move staging to:
+    Pipelines/<name>/<NodeName>_<ss_mm_hh_DD_MM_YYYY>/
+    (new unique result version)
+```
+
+**Benefits:**
+- Zero duplicate disk writes for re-runs with same data
+- Full lineage: every versioned result folder is independently verifiable
+- Deterministic: same inputs always produce the same folder name-independent hash
+
+#### 6. **ProcessRunner Abstraction**
+
+`ProcessRunner` is an abstract interface that wraps `Process.run` and `Process.start`:
+
+```dart
+abstract class ProcessRunner {
+  Future<ProcessResult> run(String executable, List<String> arguments, {
+    String? workingDirectory,
+    Map<String, String>? environment,
+    bool runInShell = false,
+    Duration? timeout,          // auto-kill after timeout
+  });
+
+  Future<Process> start(String executable, List<String> arguments, {...});
+
+  Future<void> kill(Process process, {
+    ProcessSignal signal = ProcessSignal.sigterm,
+    Duration gracePeriod = const Duration(seconds: 5),  // SIGTERM → SIGKILL
+  });
+}
+```
+
+- **`SystemProcessRunner`**: production implementation using real OS processes
+- **`DockerService.withRunner()`** and **`WorkspaceService.withPath()`**: factory constructors for test isolation (inject `FakeProcessRunner`)
+- Two-phase kill prevents zombie processes: SIGTERM → 5 s grace → SIGKILL
+
+#### 7. **Docker Hub Search & Caching**
+
+- **Live search** against `https://hub.docker.com/v2/search/repositories/`
+- **Smart tag resolution** (`_resolveSmartTag`): fetches tag list, ranks by version-like patterns (e.g. `1.2.3`, `v1.2.3`) over non-version tags (e.g. `latest`, `slim`), then returns the most recent stable version
+- **LRU cache with TTL**: tag lists cached in memory; expired entries serve stale data immediately (Stale-While-Revalidate) while a background refresh runs
+- **Deduplication**: concurrent requests for the same image/query share a single in-flight future
+
+#### 8. **Template System**
+
+Defined as compile-time constants in `pipeline_template.dart`:
+
+```dart
+class PipelineTemplate {
+  final String id, name, description, category;
+  final List<Color> gradientColors;
+  final IconData icon;
+  final String estimatedTime, difficulty;
+  final List<String> tags, requiredImages;
+  final List<TemplateNodeDef> nodes;          // positions + type + param overrides
+  final List<TemplateConnectionDef> connections;  // by node list index
+}
+```
+
+- All nodes are positioned near the virtual canvas centre `(25000, 25000)` so `centerView()` / auto-fit requires minimal travel
+- `PipelineController.loadTemplate()` clears the canvas, creates all nodes + connections atomically, saves history, then increments `fitViewRequest` to trigger the canvas auto-fit animation
+
+#### 9. **Docker Compose Export**
+
+- Generates a `.zip` containing:
+  - `docker-compose.yml`: services with `depends_on: service_completed_successfully`, `platform:`, `user:`, volumes, env, command
+  - `pipeline_config.env`: all node parameters as overridable env vars + `# RICOCHET_STATE: <base64>` embedded at the bottom
+  - `README.md`: auto-generated run instructions, lifecycle commands, common fixes
+- The `RICOCHET_STATE` blob is JSON → UTF-8 → Base64. It encodes all nodes and connections and is decoded by `WorkspaceService.importPipelineFromExport()` for perfect round-trip fidelity
+
+#### 10. **System Stats Polling**
+
+`SystemStatsController` updates CPU usage, GPU usage, and free disk space every 4 seconds:
+
+| Metric | macOS | Windows | Linux |
+|--------|-------|---------|-------|
+| **CPU** | `top -l 1` | PowerShell `Win32_Processor` | `/proc/stat` raw delta (no subprocess) |
+| **GPU** | — | `nvidia-smi --query-gpu=utilization.gpu` | `nvidia-smi ...` |
+| **Disk** | `df -h` | PowerShal `Get-PSDrive` | `df -h` |
+
+- GPU polling gracefully disables itself if `nvidia-smi` is absent
+- Linux CPU uses a tick-delta from `/proc/stat` — **zero child process per cycle**
+- Polling skips if a previous poll is still in flight (no overlapping calls)
+
+#### 11. **Window Management**
+
+- **`window_manager`**: hides the OS title bar for a clean frameless window
+- **`DragToMoveArea`**: wraps the top bar on both Home Screen and Editor header, enabling window dragging from any part of the header
+- **macOS**: left-side padding set to 80 px to avoid overlapping native traffic-light controls; custom buttons hidden
+- **Windows/Linux**: custom Minimize / Maximize / Close buttons with hover colours
 
 ---
 
@@ -288,7 +477,12 @@ Think of it as **"n8n meets Galaxy"** - combining the beautiful drag-and-drop in
 - Feels like Figma/Notion, not academic software from 2010
 - Dark mode, smooth animations, attention to detail
 
-**5. Open Yet Monetizable**
+**5. Content-Addressed Reproducibility**
+- Smart MD5 deduplication means identical analyses never re-run or re-store
+- Every result is versioned and independently verifiable
+- Round-trip export/import via embedded RICOCHET_STATE blob
+
+**6. Open Yet Monetizable**
 - Free core = community growth
 - Premium features = sustainable development
 - Best of both worlds (unlike 100% free or 100% paid)
@@ -364,8 +558,32 @@ Think of it as **"n8n meets Galaxy"** - combining the beautiful drag-and-drop in
 | **Visual First** | Drag-drop, not code | Accessible to biologists |
 | **Docker Native** | Built-in, not plugin | Reproducible, consistent |
 | **Modern UX** | 2024 design standards | People actually want to use it |
+| **Content-Addressed** | MD5 dedup + versioning | Never re-run what hasn't changed |
+| **Round-Trip Export** | RICOCHET_STATE embed | Share pipelines that re-import perfectly |
 | **Open Core** | Free local, paid cloud | Sustainable + community |
 | **Cross-Platform** | macOS/Windows/Linux | Works on all lab computers |
+| **Testable Architecture** | ProcessRunner interface | Reliable CI, injectable fakes |
+
+---
+
+## 🔧 Tech Stack Reference
+
+| Layer | Technology | Purpose |
+|-------|-----------|---------|
+| UI Framework | Flutter 3.x / Dart 3.x | Cross-platform desktop |
+| Window Management | `window_manager` | Frameless window, custom title bar |
+| State Management | GetX 4.x | Reactive controllers |
+| Docker Integration | Docker CLI via `Process` API | Container lifecycle |
+| HTTP | `http` | Docker Hub API search |
+| Serialization | `json_serializable`, `json_annotation` | Pipeline JSON I/O |
+| File Picking | `file_picker` | Multi-file input selection |
+| Path Handling | `path`, `path_provider` | Cross-platform path resolution |
+| Archive | `archive` | ZIP export/import |
+| Hashing | `crypto` (MD5) | Output deduplication |
+| UUID | `uuid` | Unique node/connection IDs |
+| Typography | `google_fonts` | UI typography |
+| Process Abstraction | `ProcessRunner` (custom) | Testable subprocess management |
+| Algorithm | Kahn's Topological Sort | Execution ordering |
 
 ---
 
@@ -376,6 +594,9 @@ The easiest way to build bioinformatics pipelines.
 
 **Medium-term (2 years):**  
 The standard tool for reproducible computational biology.
+
+**AI Assistant (in design):**  
+Bring-your-own-model pipeline generation and command assist — see [`AI_ASSISTANT_PLAN.md`](AI_ASSISTANT_PLAN.md) (v5).
 
 **Long-term (5 years):**  
 Every published bioinformatics paper includes a Ricochet pipeline file, just like they include code repositories today.
@@ -390,6 +611,8 @@ Every published bioinformatics paper includes a Ricochet pipeline file, just lik
 - Designed for the 80% of users who find Nextflow too complex and Galaxy too limited
 - Free and open source (with paid cloud features coming)
 - Built with modern technology (Flutter) for a modern user experience
+- Content-addressed: identical results reused automatically, zero wasted compute
+- Fully portable: pipelines export as self-contained Docker Compose projects and re-import perfectly
 
 **If you can use Figma, you can use Ricochet. If you can run Docker, you can run Ricochet. That's the promise.**
 

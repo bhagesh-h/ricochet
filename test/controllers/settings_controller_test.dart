@@ -44,6 +44,7 @@ void main() {
   });
 
   test('setMaxParallelJobs persists and updates effective cap', () async {
+    fakeService.stored = const AppSettings(parallelExecutionEnabled: true);
     final controllerWithCap = SettingsController(
       settingsService: fakeService,
       systemResourceService: SystemResourceService(logicalProcessorOverride: 4),

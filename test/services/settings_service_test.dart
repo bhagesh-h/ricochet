@@ -29,6 +29,7 @@ void main() {
     final settings = await service.load();
     expect(settings.parallelExecutionEnabled, isFalse);
     expect(settings.maxParallelJobs, AppSettings.defaultMaxParallelJobs);
+    expect(settings.aiAssistant.enabled, isFalse);
   });
 
   test('save and load round-trip parallel execution flag', () async {

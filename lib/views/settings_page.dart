@@ -7,6 +7,7 @@ import 'package:window_manager/window_manager.dart';
 import '../controllers/home_controller.dart';
 import '../controllers/settings_controller.dart';
 import '../models/app_settings.dart';
+import 'settings/ai_assistant_section.dart';
 import 'widgets/ricochet_logo.dart';
 import 'widgets/window_buttons.dart';
 
@@ -127,6 +128,13 @@ class SettingsPage extends StatelessWidget {
                           );
                         }),
                       ),
+                      const SizedBox(height: 16),
+                      _SettingsSection(
+                        title: 'AI Assistant',
+                        subtitle:
+                            'Connect an OpenAI-compatible API for pipeline and command assist.',
+                        child: const AiAssistantSettingsSection(),
+                      ),
                     ],
                   ),
                 ),
@@ -215,158 +223,149 @@ class _ParallelExecutionTile extends StatefulWidget {
 }
 
 class _ParallelExecutionTileState extends State<_ParallelExecutionTile> {
-  bool _isHovered = false;
   bool _isSaving = false;
+
+  String get _platformLabel {
+    if (Platform.isWindows) return 'Windows';
+    if (Platform.isMacOS) return 'macOS';
+    return 'this machine';
+  }
 
   @override
   Widget build(BuildContext context) {
-    return MouseRegion(
-      onEnter: (_) => setState(() => _isHovered = true),
-      onExit: (_) => setState(() => _isHovered = false),
-      child: Tooltip(
-        message: SettingsController.parallelExecutionTooltip,
-        preferBelow: false,
-        waitDuration: const Duration(milliseconds: 350),
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 160),
-          margin: const EdgeInsets.fromLTRB(12, 4, 12, 12),
-          padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
-          decoration: BoxDecoration(
-            color: _isHovered ? const Color(0xFFF8FAFC) : Colors.transparent,
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(
+    return Container(
+      margin: const EdgeInsets.fromLTRB(12, 4, 12, 12),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: widget.enabled
+              ? const Color(0xFF6366F1).withOpacity(0.2)
+              : const Color(0xFFE2E8F0),
+        ),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: 42,
+            height: 42,
+            decoration: BoxDecoration(
               color: widget.enabled
-                  ? const Color(0xFF6366F1).withOpacity(_isHovered ? 0.35 : 0.2)
-                  : const Color(0xFFE2E8F0),
+                  ? const Color(0xFFEEF2FF)
+                  : const Color(0xFFF1F5F9),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Icon(
+              Icons.account_tree_outlined,
+              size: 22,
+              color: widget.enabled
+                  ? const Color(0xFF6366F1)
+                  : const Color(0xFF64748B),
             ),
           ),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Container(
-                width: 42,
-                height: 42,
-                decoration: BoxDecoration(
-                  color: widget.enabled
-                      ? const Color(0xFFEEF2FF)
-                      : const Color(0xFFF1F5F9),
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                child: Icon(
-                  Icons.account_tree_outlined,
-                  size: 22,
-                  color: widget.enabled
-                      ? const Color(0xFF6366F1)
-                      : const Color(0xFF64748B),
-                ),
-              ),
-              const SizedBox(width: 14),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
                   children: [
-                    Row(
-                      children: [
-                        const Expanded(
-                          child: Text(
-                            'Parallel Execution',
-                            style: TextStyle(
-                              fontSize: 14.5,
-                              fontWeight: FontWeight.w700,
-                              color: Color(0xFF0F172A),
-                            ),
-                          ),
-                        ),
-                        Switch.adaptive(
-                          value: widget.enabled,
-                          activeColor: const Color(0xFF6366F1),
-                          onChanged: _isSaving
-                              ? null
-                              : (value) async {
-                                  setState(() => _isSaving = true);
-                                  try {
-                                    await widget.onChanged(value);
-                                  } catch (_) {
-                                    if (!context.mounted) return;
-                                    Get.snackbar(
-                                      'Could not save setting',
-                                      'Your preference was not saved. Please try again.',
-                                      snackPosition: SnackPosition.BOTTOM,
-                                      backgroundColor: const Color(0xFFEF4444),
-                                      colorText: Colors.white,
-                                      margin: const EdgeInsets.all(16),
-                                      duration: const Duration(seconds: 3),
-                                    );
-                                    return;
-                                  } finally {
-                                    if (mounted) {
-                                      setState(() => _isSaving = false);
-                                    }
-                                  }
-                                  if (!context.mounted) return;
-                                  Get.snackbar(
-                                    value
-                                        ? 'Parallel execution enabled'
-                                        : 'Parallel execution disabled',
-                                    value
-                                        ? 'Independent branches will run concurrently on your local Docker daemon.'
-                                        : 'Pipelines will run one node at a time, as before.',
-                                    snackPosition: SnackPosition.BOTTOM,
-                                    backgroundColor: const Color(0xFF1E293B),
-                                    colorText: Colors.white,
-                                    margin: const EdgeInsets.all(16),
-                                    duration: const Duration(seconds: 3),
-                                  );
-                                },
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 6),
-                    Text(
-                      SettingsController.parallelExecutionTooltip,
-                      style: TextStyle(
-                        fontSize: 12.5,
-                        height: 1.45,
-                        color: _isHovered
-                            ? const Color(0xFF475569)
-                            : const Color(0xFF64748B),
-                      ),
-                    ),
-                    if (_isHovered) ...[
-                      const SizedBox(height: 10),
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 10,
-                          vertical: 6,
-                        ),
-                        decoration: BoxDecoration(
-                          color: const Color(0xFFEEF2FF),
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: const [
-                            Icon(Icons.info_outline_rounded,
-                                size: 14, color: Color(0xFF6366F1)),
-                            SizedBox(width: 6),
-                            Text(
-                              'Uses local Docker Desktop on macOS and Windows',
-                              style: TextStyle(
-                                fontSize: 11.5,
-                                fontWeight: FontWeight.w600,
-                                color: Color(0xFF4338CA),
-                              ),
-                            ),
-                          ],
+                    const Expanded(
+                      child: Text(
+                        'Parallel Execution',
+                        style: TextStyle(
+                          fontSize: 14.5,
+                          fontWeight: FontWeight.w700,
+                          color: Color(0xFF0F172A),
                         ),
                       ),
-                    ],
+                    ),
+                    Switch.adaptive(
+                      value: widget.enabled,
+                      activeColor: const Color(0xFF6366F1),
+                      onChanged: _isSaving
+                          ? null
+                          : (value) async {
+                              setState(() => _isSaving = true);
+                              try {
+                                await widget.onChanged(value);
+                              } catch (_) {
+                                if (!context.mounted) return;
+                                Get.snackbar(
+                                  'Could not save setting',
+                                  'Your preference was not saved. Please try again.',
+                                  snackPosition: SnackPosition.BOTTOM,
+                                  backgroundColor: const Color(0xFFEF4444),
+                                  colorText: Colors.white,
+                                  margin: const EdgeInsets.all(16),
+                                  duration: const Duration(seconds: 3),
+                                );
+                                return;
+                              } finally {
+                                if (mounted) {
+                                  setState(() => _isSaving = false);
+                                }
+                              }
+                              if (!context.mounted) return;
+                              Get.snackbar(
+                                value
+                                    ? 'Parallel execution enabled'
+                                    : 'Parallel execution disabled',
+                                value
+                                    ? 'Independent branches will run concurrently on your local Docker daemon.'
+                                    : 'Pipelines will run one node at a time, as before.',
+                                snackPosition: SnackPosition.BOTTOM,
+                                backgroundColor: const Color(0xFF1E293B),
+                                colorText: Colors.white,
+                                margin: const EdgeInsets.all(16),
+                                duration: const Duration(seconds: 3),
+                              );
+                            },
+                    ),
                   ],
                 ),
-              ),
-            ],
+                const SizedBox(height: 6),
+                Text(
+                  SettingsController.parallelExecutionSummary,
+                  style: const TextStyle(
+                    fontSize: 12.5,
+                    height: 1.45,
+                    color: Color(0xFF64748B),
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Padding(
+                      padding: EdgeInsets.only(top: 1),
+                      child: Icon(
+                        Icons.info_outline_rounded,
+                        size: 14,
+                        color: Color(0xFF6366F1),
+                      ),
+                    ),
+                    const SizedBox(width: 6),
+                    Expanded(
+                      child: Text(
+                        SettingsController.parallelExecutionPlatformNote(
+                          _platformLabel,
+                        ),
+                        style: const TextStyle(
+                          fontSize: 11.5,
+                          height: 1.4,
+                          fontWeight: FontWeight.w500,
+                          color: Color(0xFF4338CA),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
           ),
-        ),
+        ],
       ),
     );
   }
@@ -392,97 +391,94 @@ class _MaxParallelJobsTile extends StatefulWidget {
 }
 
 class _MaxParallelJobsTileState extends State<_MaxParallelJobsTile> {
-  bool _isHovered = false;
   bool _isSaving = false;
 
   @override
   Widget build(BuildContext context) {
     final cappedBySystem = widget.value > widget.effectiveCap;
 
-    return MouseRegion(
-      onEnter: (_) => setState(() => _isHovered = true),
-      onExit: (_) => setState(() => _isHovered = false),
-      child: Tooltip(
-        message: SettingsController.maxParallelJobsTooltip,
-        preferBelow: false,
-        waitDuration: const Duration(milliseconds: 350),
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 160),
-          margin: const EdgeInsets.fromLTRB(12, 0, 12, 12),
-          padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
-          decoration: BoxDecoration(
-            color: _isHovered ? const Color(0xFFF8FAFC) : Colors.transparent,
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(
-              color: const Color(0xFFE2E8F0),
-            ),
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+    return Container(
+      margin: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: const Color(0xFFE2E8F0)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
             children: [
-              Row(
-                children: [
-                  Container(
-                    width: 42,
-                    height: 42,
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFF1F5F9),
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    child: const Icon(
-                      Icons.speed_rounded,
-                      size: 22,
-                      color: Color(0xFF64748B),
-                    ),
-                  ),
-                  const SizedBox(width: 14),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Text(
-                          'Max parallel jobs',
-                          style: TextStyle(
-                            fontSize: 14.5,
-                            fontWeight: FontWeight.w700,
-                            color: Color(0xFF0F172A),
-                          ),
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          'Default ${AppSettings.defaultMaxParallelJobs}. '
-                          'This machine has ${widget.logicalProcessors} CPU '
-                          'thread${widget.logicalProcessors == 1 ? '' : 's'}.',
-                          style: const TextStyle(
-                            fontSize: 12.5,
-                            height: 1.45,
-                            color: Color(0xFF64748B),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 10,
-                      vertical: 4,
-                    ),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFEEF2FF),
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: Text(
-                      '${widget.value}',
-                      style: const TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w800,
-                        color: Color(0xFF4338CA),
+              Container(
+                width: 42,
+                height: 42,
+                decoration: BoxDecoration(
+                  color: const Color(0xFFF1F5F9),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: const Icon(
+                  Icons.speed_rounded,
+                  size: 22,
+                  color: Color(0xFF64748B),
+                ),
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'Max parallel jobs',
+                      style: TextStyle(
+                        fontSize: 14.5,
+                        fontWeight: FontWeight.w700,
+                        color: Color(0xFF0F172A),
                       ),
                     ),
-                  ),
-                ],
+                    const SizedBox(height: 4),
+                    Text(
+                      SettingsController.maxParallelJobsSummary,
+                      style: const TextStyle(
+                        fontSize: 12.5,
+                        height: 1.45,
+                        color: Color(0xFF64748B),
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      'Default ${AppSettings.defaultMaxParallelJobs}. '
+                      'This machine has ${widget.logicalProcessors} CPU '
+                      'thread${widget.logicalProcessors == 1 ? '' : 's'}.',
+                      style: const TextStyle(
+                        fontSize: 11.5,
+                        height: 1.4,
+                        color: Color(0xFF94A3B8),
+                      ),
+                    ),
+                  ],
+                ),
               ),
-              const SizedBox(height: 14),
+              Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 4,
+                ),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFEEF2FF),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Text(
+                  '${widget.value}',
+                  style: const TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w800,
+                    color: Color(0xFF4338CA),
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
               SliderTheme(
                 data: SliderTheme.of(context).copyWith(
                   activeTrackColor: const Color(0xFF6366F1),
@@ -561,8 +557,6 @@ class _MaxParallelJobsTileState extends State<_MaxParallelJobsTile> {
                 ),
             ],
           ),
-        ),
-      ),
     );
   }
 }

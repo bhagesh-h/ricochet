@@ -104,4 +104,39 @@ void main() {
       expect(cmd, 'docker run --rm -it alpine:3.18');
     });
   });
+
+  group('tag selection', () {
+    test('getSmartDefaultTag skips latest when registry has no latest tag', () async {
+      ctrl.seedTagsForTest('biocontainers/samtools', [
+        _tag('v1.7.0_cv4'),
+        _tag('v1.9-4-deb_cv1'),
+      ]);
+
+      final tag = await ctrl.getSmartDefaultTag('biocontainers/samtools');
+      expect(tag, 'v1.9-4-deb_cv1');
+    });
+
+    test('getSmartDefaultTag prefers latest when present', () async {
+      ctrl.seedTagsForTest('library/alpine', [
+        _tag('3.18'),
+        _tag('latest'),
+      ]);
+
+      final tag = await ctrl.getSmartDefaultTag('library/alpine');
+      expect(tag, 'latest');
+    });
+
+    test('getFallbackTag returns next best tag excluding missing tag', () async {
+      ctrl.seedTagsForTest('biocontainers/samtools', [
+        _tag('v1.7.0_cv4'),
+        _tag('v1.9-4-deb_cv1'),
+      ]);
+
+      final tag = await ctrl.getFallbackTag(
+        'biocontainers/samtools',
+        excludeTag: 'latest',
+      );
+      expect(tag, 'v1.9-4-deb_cv1');
+    });
+  });
 }
